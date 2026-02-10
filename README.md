@@ -1,5 +1,9 @@
 <div align="center">
-  <img src="factura.png" alt="Facturador" width="120" height="120" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/public/factura_dark_mode.png" />
+    <source media="(prefers-color-scheme: light)" srcset="frontend/public/factura_light_mode.png" />
+    <img src="frontend/public/factura_light_mode.png" alt="Facturador" width="120" height="120" />
+  </picture>
   <h1>Facturador</h1>
 </div>
 
@@ -10,7 +14,18 @@ Sistema de facturacion electronica masiva para Argentina, integrado con ARCA (ex
 
 - **Backend**: Flask 3, SQLAlchemy 2, Celery, Redis, PostgreSQL 16
 - **Frontend**: React 18, Vite, TanStack Query, Zustand, Tailwind CSS
-- **Integracion ARCA**: modulo independiente en `arca_integration/`
+- **Integracion ARCA**: libreria `arca_arg` + modulo wrapper en `arca_integration/`
+
+## Referencia libreria ARCA
+
+Este proyecto utiliza la libreria `arca_arg` para interactuar con los web services de ARCA. La integracion se encapsula en `arca_integration/client.py` mediante la clase `ArcaClient`.
+
+- <a href="https://relopezbriega.github.io/blog/2025/01/27/libreria-arca-arg-conectando-tu-aplicacion-con-los-servicios-web-de-arca-afip-con-python/" target="_blank">
+    <img alt="Blog arca_arg" src="https://img.shields.io/badge/Blog-arca_arg%20%7C%20Guia%20completa-1f2937?style=flat-square&labelColor=334155&logo=readme&logoColor=white" />
+  </a>
+- <a href="https://github.com/relopezbriega/arca_arg" target="_blank">
+    <img alt="Repositorio GitHub arca_arg" src="https://img.shields.io/badge/GitHub-arca__arg-111827?style=flat-square&labelColor=374151&logo=github&logoColor=white" />
+  </a>
 
 ## Estado del proyecto (2026-02-10)
 
@@ -105,8 +120,9 @@ Despues de ejecutar `python seed.py`:
 ├── backend/           # API Flask + Celery
 ├── frontend/          # SPA React
 ├── arca_integration/  # Integracion ARCA desacoplada
-├── factura.png        # Logo base del proyecto
-├── frontend/public/favicon.png # Favicon con fondo blanco
+├── frontend/public/factura_dark_mode.png  # Logo para fondo oscuro
+├── frontend/public/factura_light_mode.png # Logo para fondo claro
+├── frontend/public/favicon.png # Favicon
 ├── docker-compose.yml
 └── Makefile
 ```

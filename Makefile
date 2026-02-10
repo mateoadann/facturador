@@ -80,7 +80,7 @@ bootstrap: up migrate seed ## Start stack + migrate + seed
 test: test-backend ## Run default test suite
 
 test-backend: ensure-api ## Run backend tests in container
-	$(DC) exec -T api sh -lc "python -m pip show pytest >/dev/null 2>&1 || python -m pip install pytest; python -m pytest"
+	$(DC) exec -T api sh -lc "python -m pip show pytest >/dev/null 2>&1 || python -m pip install pytest; cd /app; python -m pytest -q --junitxml=/tmp/pytest.xml; pytest_exit=$$?; python scripts/pytest_table_report.py /tmp/pytest.xml; exit $$pytest_exit"
 
 lint-frontend: ensure-frontend ## Run frontend lint in container
 	$(DC) exec -T frontend npm run lint
