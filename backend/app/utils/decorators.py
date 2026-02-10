@@ -1,4 +1,5 @@
 from functools import wraps
+from uuid import UUID
 from flask import g, jsonify
 from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from ..models import Usuario
@@ -14,6 +15,11 @@ def tenant_required(f):
         verify_jwt_in_request()
 
         user_id = get_jwt_identity()
+        try:
+            user_id = UUID(str(user_id))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Token inválido'}), 401
+
         usuario = Usuario.query.get(user_id)
 
         if not usuario:
@@ -39,6 +45,11 @@ def admin_required(f):
         verify_jwt_in_request()
 
         user_id = get_jwt_identity()
+        try:
+            user_id = UUID(str(user_id))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Token inválido'}), 401
+
         usuario = Usuario.query.get(user_id)
 
         if not usuario:

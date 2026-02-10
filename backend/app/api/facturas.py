@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, g, current_app, make_response
+from uuid import UUID
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
 from ..services.csv_parser import parse_csv
@@ -348,11 +349,17 @@ def bulk_delete_facturas():
         return jsonify({'error': 'Lista de IDs requerida'}), 400
 
     ids = data['ids']
+    normalized_ids = []
+    for factura_id in ids:
+        try:
+            normalized_ids.append(UUID(str(factura_id)))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Lista de IDs inválida'}), 400
 
     # Solo eliminar facturas en estado borrador o pendiente
     facturas = Factura.query.filter(
         Factura.tenant_id == g.tenant_id,
-        Factura.id.in_(ids),
+        Factura.id.in_(normalized_ids),
         Factura.estado.in_(['borrador', 'pendiente'])
     ).all()
 

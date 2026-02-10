@@ -1,4 +1,5 @@
 import io
+from uuid import UUID
 import pytest
 from app.models import Factura, Facturador
 
@@ -140,7 +141,7 @@ class TestFacturarLote:
         payload = response.get_json()
         assert payload['facturador']['id'] == str(alt_facturador.id)
 
-        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        factura = Factura.query.filter_by(lote_id=UUID(lote_id)).first()
         assert str(factura.facturador_id) == str(alt_facturador.id)
         assert factura.punto_venta == alt_facturador.punto_venta
 

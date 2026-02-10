@@ -88,7 +88,7 @@ function Sidebar() {
 
         {/* Navigation */}
         <nav className="mt-4 space-y-1">
-          {navItems.map((item, index) => {
+          {navItems.map((item) => {
             if ('group' in item) {
               return (
                 <div key={item.group} className="pt-4">

@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     create_access_token,
@@ -68,6 +69,11 @@ def refresh():
 def me():
     """Obtener información del usuario actual."""
     user_id = get_jwt_identity()
+    try:
+        user_id = UUID(str(user_id))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Token inválido'}), 401
+
     usuario = Usuario.query.get(user_id)
 
     if not usuario:

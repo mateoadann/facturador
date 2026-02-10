@@ -6,7 +6,7 @@ from ..extensions import db
 class Tenant(db.Model):
     __tablename__ = 'tenant'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     nombre = db.Column(db.String(255), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False)
     activo = db.Column(db.Boolean, default=True)

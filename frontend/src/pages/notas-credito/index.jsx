@@ -66,7 +66,7 @@ function NotasCredito() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       const contentDisposition = response.headers?.['content-disposition'] || ''
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/)
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/) 
       const fallback = `nota-credito-${nota.punto_venta || 0}-${nota.numero_comprobante || nota.id}.pdf`
       a.href = url
       a.download = fileNameMatch?.[1] || fallback

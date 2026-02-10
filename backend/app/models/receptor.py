@@ -6,8 +6,8 @@ from ..extensions import db
 class Receptor(db.Model):
     __tablename__ = 'receptor'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
     doc_tipo = db.Column(db.Integer, default=80)  # 80 = CUIT
     doc_nro = db.Column(db.String(13), nullable=False)
     razon_social = db.Column(db.String(255), nullable=False)

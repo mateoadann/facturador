@@ -25,7 +25,7 @@ class TestFacturaBuilder:
         assert req['FeCabReq']['CbteTipo'] == 1
 
         det = req['FeDetReq']['FECAEDetRequest'][0]
-        assert det['DocNro'] == '30111111111'
+        assert det['DocNro'] == 30111111111
         assert det['ImpTotal'] == 12100.00
         assert det['ImpNeto'] == 10000.00
         assert det['ImpIVA'] == 2100.00
@@ -106,7 +106,7 @@ class TestFacturaBuilder:
         result = builder.build()
 
         det = result['FeCAEReq']['FeDetReq']['FECAEDetRequest'][0]
-        assert det['DocNro'] == '30111111111'
+        assert det['DocNro'] == 30111111111
 
     def test_moneda_default(self):
         builder = self._build_basic()

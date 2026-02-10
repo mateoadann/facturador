@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Upload, Play, Eye, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
@@ -75,7 +75,7 @@ function Facturar() {
   })
 
   const facturas = facturasData?.items || []
-  const lotes = lotesData?.items || []
+  const lotes = useMemo(() => lotesData?.items || [], [lotesData])
 
   useEffect(() => {
     if (!lotesData) return

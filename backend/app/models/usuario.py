@@ -7,8 +7,8 @@ from ..extensions import db
 class Usuario(db.Model):
     __tablename__ = 'usuario'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
     email = db.Column(db.String(255), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     nombre = db.Column(db.String(255))

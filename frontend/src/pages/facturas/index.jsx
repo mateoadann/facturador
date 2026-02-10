@@ -75,7 +75,7 @@ function Facturas() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       const contentDisposition = response.headers?.['content-disposition'] || ''
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/)
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/) 
       const fallback = `comprobante-${factura.punto_venta || 0}-${factura.numero_comprobante || factura.id}.pdf`
       a.href = url
       a.download = fileNameMatch?.[1] || fallback

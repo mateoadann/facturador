@@ -38,6 +38,7 @@ class TestImportCSV:
         csv_content = "col1,col2\nval1,val2"
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'bad.csv'),
+            'etiqueta': 'Test CSV inválido',
         }
         response = client.post(
             '/api/facturas/import',

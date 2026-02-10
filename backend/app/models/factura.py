@@ -7,11 +7,11 @@ from ..extensions import db
 class Factura(db.Model):
     __tablename__ = 'factura'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
-    lote_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('lote.id'))
-    facturador_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('facturador.id'), nullable=False)
-    receptor_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('receptor.id'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
+    lote_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('lote.id'))
+    facturador_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('facturador.id'), nullable=False)
+    receptor_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('receptor.id'), nullable=False)
 
     # Datos del comprobante
     tipo_comprobante = db.Column(db.Integer, nullable=False)  # 1=FC A, 6=FC B, 11=FC C, etc.
@@ -105,8 +105,8 @@ class Factura(db.Model):
 class FacturaItem(db.Model):
     __tablename__ = 'factura_item'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    factura_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('factura.id', ondelete='CASCADE'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    factura_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('factura.id', ondelete='CASCADE'), nullable=False)
     descripcion = db.Column(db.String(500), nullable=False)
     cantidad = db.Column(db.Numeric(15, 4), nullable=False)
     precio_unitario = db.Column(db.Numeric(15, 4), nullable=False)

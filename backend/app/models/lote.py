@@ -6,9 +6,9 @@ from ..extensions import db
 class Lote(db.Model):
     __tablename__ = 'lote'
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
-    facturador_id = db.Column(db.UUID(as_uuid=True), db.ForeignKey('facturador.id'))
+    id = db.Column(db.Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('tenant.id'), nullable=False)
+    facturador_id = db.Column(db.Uuid(as_uuid=True), db.ForeignKey('facturador.id'))
     etiqueta = db.Column(db.String(255))
     tipo = db.Column(db.String(50), nullable=False)  # 'factura', 'nota_credito', 'nota_debito'
     estado = db.Column(db.String(50), default='pendiente')  # 'pendiente', 'procesando', 'completado', 'error'

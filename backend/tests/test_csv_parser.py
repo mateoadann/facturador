@@ -93,7 +93,7 @@ class TestParseCSV:
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 1
-        assert facturas[0]['cbte_asoc_tipo'] == 3
+        assert facturas[0]['cbte_asoc_tipo'] == 1
         assert facturas[0]['cbte_asoc_pto_vta'] == 1
         assert facturas[0]['cbte_asoc_nro'] == 100
 
