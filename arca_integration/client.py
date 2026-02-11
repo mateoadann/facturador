@@ -1,5 +1,6 @@
 import tempfile
 import os
+import time
 from typing import Optional
 
 import arca_arg.settings as arca_settings
@@ -81,11 +82,19 @@ class ArcaClient:
         """Obtiene o crea la instancia de WSFE (Factura Electrónica)."""
         if self._wsfe is None:
             self._ensure_settings()
-            try:
-                wsdl = WSDL_FEV1_PROD if self.is_production else WSDL_FEV1_HOM
-                self._wsfe = ArcaWebService(wsdl, 'wsfe', enable_logging=False)
-            except Exception as e:
-                raise ArcaAuthError(f'Error al conectar con WSFE: {str(e)}')
+            wsdl = WSDL_FEV1_PROD if self.is_production else WSDL_FEV1_HOM
+            last_err = None
+            for attempt in range(3):
+                try:
+                    self._wsfe = ArcaWebService(wsdl, 'wsfe', enable_logging=False)
+                    break
+                except Exception as e:
+                    last_err = e
+                    if 'ya posee un ta valido' in str(e).lower() and attempt < 2:
+                        time.sleep(2 * (attempt + 1))
+                        self._ensure_settings()
+                        continue
+                    raise ArcaAuthError(f'Error al conectar con WSFE: {str(e)}')
         return self._wsfe
 
     @property
@@ -93,13 +102,21 @@ class ArcaClient:
         """Obtiene o crea la instancia del servicio de Constancia de Inscripción (padrón)."""
         if self._ws_constancia is None:
             self._ensure_settings()
-            try:
-                wsdl = WSDL_CONSTANCIA_PROD if self.is_production else WSDL_CONSTANCIA_HOM
-                self._ws_constancia = ArcaWebService(
-                    wsdl, 'ws_sr_constancia_inscripcion', enable_logging=False
-                )
-            except Exception as e:
-                raise ArcaAuthError(f'Error al conectar con servicio de padrón: {str(e)}')
+            wsdl = WSDL_CONSTANCIA_PROD if self.is_production else WSDL_CONSTANCIA_HOM
+            last_err = None
+            for attempt in range(3):
+                try:
+                    self._ws_constancia = ArcaWebService(
+                        wsdl, 'ws_sr_constancia_inscripcion', enable_logging=False
+                    )
+                    break
+                except Exception as e:
+                    last_err = e
+                    if 'ya posee un ta valido' in str(e).lower() and attempt < 2:
+                        time.sleep(2 * (attempt + 1))
+                        self._ensure_settings()
+                        continue
+                    raise ArcaAuthError(f'Error al conectar con servicio de padrón: {str(e)}')
         return self._ws_constancia
 
     def __del__(self):
