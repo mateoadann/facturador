@@ -48,8 +48,13 @@ class TestParseCSV:
         assert 'items' in facturas[0]
         assert facturas[0]['items'][0]['descripcion'] == 'Servicio web'
         assert facturas[0]['items'][0]['cantidad'] == Decimal('1')
+        # Importes recalculados desde items: neto=10000, IVA 21%=2100, total=12100
+        assert facturas[0]['importe_neto'] == Decimal('10000.00')
+        assert facturas[0]['importe_iva'] == Decimal('2100.00')
+        assert facturas[0]['importe_total'] == Decimal('12100.00')
 
     def test_parse_csv_groups_multiple_rows_into_single_factura(self):
+        """Items con distintos importes se agrupan y recalculan desde items."""
         csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,fecha_desde,fecha_hasta,fecha_vto_pago,importe_iva,moneda,cotizacion,item_descripcion,item_cantidad,item_precio_unitario,item_alicuota_iva_id
 20123456789,30111111111,1,2,2026-01-15,121000.00,100000.00,2026-01-01,2026-01-31,2026-01-20,21.00,PES,1,Servicio mensual,1,100000.00,5
 20123456789,30111111111,1,2,2026-01-15,60500.00,50000.00,2026-01-01,2026-01-31,2026-01-20,21.00,PES,1,Soporte técnico,1,50000.00,5"""
@@ -58,25 +63,30 @@ class TestParseCSV:
 
         assert len(errors) == 0
         assert len(facturas) == 1
+        # Importes recalculados desde items (100000 + 50000 = 150000 neto)
         assert facturas[0]['importe_neto'] == Decimal('150000.00')
-        assert facturas[0]['importe_total'] == Decimal('181500.00')
         assert facturas[0]['importe_iva'] == Decimal('31500.00')
+        assert facturas[0]['importe_total'] == Decimal('181500.00')
         assert len(facturas[0]['items']) == 2
         assert facturas[0]['items'][0]['descripcion'] == 'Servicio mensual'
         assert facturas[0]['items'][1]['descripcion'] == 'Soporte técnico'
 
-    def test_parse_csv_groups_repeated_totals_without_duplicating_amounts(self):
+    def test_parse_csv_groups_repeated_totals_recalculates_from_items(self):
+        """Cuando importes son iguales en cada fila pero hay items, recalcula desde items."""
         csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,item_descripcion,item_cantidad,item_precio_unitario,item_alicuota_iva_id
-20123456789,30111111111,1,1,2026-01-15,181500.00,150000.00,Servicio mensual,1,100000.00,5
-20123456789,30111111111,1,1,2026-01-15,181500.00,150000.00,Soporte técnico,1,50000.00,5"""
+20123456789,30111111111,1,1,2026-01-15,100.00,100.00,Servicio mensual,1,100.00,5
+20123456789,30111111111,1,1,2026-01-15,100.00,100.00,Sueldos,1,100.00,5
+20123456789,30111111111,1,1,2026-01-15,100.00,100.00,Honorarios,1,100.00,5"""
 
         facturas, errors = parse_csv(csv_content)
 
         assert len(errors) == 0
         assert len(facturas) == 1
-        assert facturas[0]['importe_neto'] == Decimal('150000.00')
-        assert facturas[0]['importe_total'] == Decimal('181500.00')
-        assert len(facturas[0]['items']) == 2
+        # 3 items x $100 = $300 neto, IVA 21% = $63, total = $363
+        assert facturas[0]['importe_neto'] == Decimal('300.00')
+        assert facturas[0]['importe_iva'] == Decimal('63.00')
+        assert facturas[0]['importe_total'] == Decimal('363.00')
+        assert len(facturas[0]['items']) == 3
 
     def test_parse_csv_invalid_row(self):
         csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto

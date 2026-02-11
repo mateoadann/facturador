@@ -95,24 +95,46 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         grouped = grouped_facturas[key]
         factura = grouped['factura']
 
-        factura['importe_total'] = resolve_grouped_amount(grouped['importe_total_rows'])
-        factura['importe_neto'] = resolve_grouped_amount(grouped['importe_neto_rows'])
-
-        importe_iva = resolve_grouped_amount(grouped['importe_iva_rows'])
-        if importe_iva is not None:
-            factura['importe_iva'] = importe_iva
-
         if grouped['items']:
             factura['items'] = grouped['items']
+            # Cuando hay items, recalcular importes desde los items
+            factura = _recalculate_from_items(factura, grouped)
+        else:
+            factura['importe_total'] = resolve_grouped_amount(grouped['importe_total_rows'])
+            factura['importe_neto'] = resolve_grouped_amount(grouped['importe_neto_rows'])
 
-        if len(grouped['importe_total_rows']) > 1 and factura.get('importe_total') is not None and factura.get('importe_neto') is not None:
-            importe_iva_calculado = (factura['importe_total'] - factura['importe_neto']).quantize(Decimal('0.01'))
-            if 'importe_iva' not in factura or abs(factura['importe_iva'] - importe_iva_calculado) > Decimal('0.01'):
-                factura['importe_iva'] = importe_iva_calculado
+            importe_iva = resolve_grouped_amount(grouped['importe_iva_rows'])
+            if importe_iva is not None:
+                factura['importe_iva'] = importe_iva
 
         facturas.append(factura)
 
     return facturas, errors
+
+
+def _recalculate_from_items(factura: Dict[str, Any], grouped: Dict) -> Dict[str, Any]:
+    """Recalcula importes desde los items cuando hay múltiples filas agrupadas."""
+    from arca_integration.constants import ALICUOTAS_IVA
+
+    items = factura['items']
+    importe_neto = sum(
+        (item['cantidad'] * item['precio_unitario']) for item in items
+    ).quantize(Decimal('0.01'))
+
+    # Calcular IVA desde los items
+    importe_iva = Decimal('0')
+    for item in items:
+        subtotal = (item['cantidad'] * item['precio_unitario']).quantize(Decimal('0.01'))
+        alicuota_id = item.get('alicuota_iva_id', 5)
+        alicuota = ALICUOTAS_IVA.get(alicuota_id, {})
+        porcentaje = Decimal(str(alicuota.get('porcentaje', 21)))
+        importe_iva += (subtotal * porcentaje / Decimal('100')).quantize(Decimal('0.01'))
+
+    factura['importe_neto'] = importe_neto
+    factura['importe_iva'] = importe_iva.quantize(Decimal('0.01'))
+    factura['importe_total'] = (importe_neto + importe_iva).quantize(Decimal('0.01'))
+
+    return factura
 
 
 def build_factura_group_key(factura: Dict[str, Any]) -> tuple:
