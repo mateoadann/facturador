@@ -72,6 +72,7 @@ export const api = {
     refresh: () => client.post('/auth/refresh'),
     me: () => client.get('/auth/me'),
     logout: () => client.post('/auth/logout'),
+    changePassword: (data) => client.post('/auth/change-password', data),
   },
 
   // Dashboard
@@ -120,6 +121,7 @@ export const api = {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
     bulkDelete: (ids) => client.delete('/facturas', { data: { ids } }),
+    sendEmail: (id) => client.post(`/facturas/${id}/enviar-email`),
   },
 
   // Lotes
@@ -139,5 +141,27 @@ export const api = {
   comprobantes: {
     consultar: (data) => client.post('/comprobantes/consultar', data),
     ultimoAutorizado: (data) => client.post('/comprobantes/ultimo-autorizado', data),
+  },
+
+  // Usuarios
+  usuarios: {
+    list: (params) => client.get('/usuarios', { params }),
+    create: (data) => client.post('/usuarios', data),
+    update: (id, data) => client.put(`/usuarios/${id}`, data),
+    toggleActive: (id) => client.post(`/usuarios/${id}/toggle-active`),
+    roles: () => client.get('/usuarios/roles'),
+  },
+
+  // Auditoría
+  audit: {
+    list: (params) => client.get('/audit', { params }),
+  },
+
+  // Email
+  email: {
+    getConfig: () => client.get('/email/config'),
+    updateConfig: (data) => client.put('/email/config', data),
+    testConnection: () => client.post('/email/test'),
+    testSend: (data) => client.post('/email/test-send', data),
   },
 }

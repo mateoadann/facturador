@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Download, Loader2 } from 'lucide-react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { Download, Loader2, Mail, MailX, Send } from 'lucide-react'
 import { api } from '@/api/client'
 import {
   Button,
@@ -26,6 +26,7 @@ function Facturas() {
     page: 1,
   })
   const [downloadingFacturaId, setDownloadingFacturaId] = useState(null)
+  const [sendingEmailId, setSendingEmailId] = useState(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['facturas', filters],
@@ -64,6 +65,18 @@ function Facturas() {
       borrador: 'Borrador',
     }
     return <Badge variant={variants[estado]}>{labels[estado]}</Badge>
+  }
+
+  const handleSendEmail = async (factura) => {
+    setSendingEmailId(factura.id)
+    try {
+      await api.facturas.sendEmail(factura.id)
+      toast.success('Email enviado', `Comprobante enviado a ${factura.receptor?.email || 'el receptor'}`)
+    } catch (error) {
+      toast.error('Error al enviar email', error.response?.data?.error || 'No se pudo enviar el email')
+    } finally {
+      setSendingEmailId(null)
+    }
   }
 
   const handleDownloadPdf = async (factura) => {
@@ -157,19 +170,20 @@ function Facturas() {
               <TableHead>Importe</TableHead>
               <TableHead>CAE</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead className="w-28">Acciones</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead className="w-36">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center">
+                <TableCell colSpan={9} className="text-center">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : facturas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-text-muted">
+                <TableCell colSpan={9} className="text-center text-text-muted">
                   No se encontraron facturas
                 </TableCell>
               </TableRow>
@@ -222,19 +236,54 @@ function Facturas() {
                   </TableCell>
                   <TableCell>{getEstadoBadge(factura.estado)}</TableCell>
                   <TableCell>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={factura.estado !== 'autorizado' || isDownloading}
-                      onClick={() => handleDownloadPdf(factura)}
-                    >
-                      {isDownloading ? (
-                        <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                    {factura.estado === 'autorizado' ? (
+                      factura.email_enviado ? (
+                        <div className="flex items-center gap-1.5 text-success">
+                          <Mail className="h-4 w-4" />
+                          <span className="text-xs">Enviado</span>
+                        </div>
+                      ) : factura.email_error ? (
+                        <div className="flex items-center gap-1.5 text-error" title={factura.email_error}>
+                          <MailX className="h-4 w-4" />
+                          <span className="text-xs">Error</span>
+                        </div>
                       ) : (
-                        <Download className="h-[18px] w-[18px]" />
+                        <span className="text-xs text-text-muted">-</span>
+                      )
+                    ) : (
+                      <span className="text-xs text-text-muted">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={factura.estado !== 'autorizado' || isDownloading}
+                        onClick={() => handleDownloadPdf(factura)}
+                      >
+                        {isDownloading ? (
+                          <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                        ) : (
+                          <Download className="h-[18px] w-[18px]" />
+                        )}
+                        PDF
+                      </Button>
+                      {factura.estado === 'autorizado' && factura.receptor?.email && (
+                        <button
+                          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
+                          onClick={() => handleSendEmail(factura)}
+                          disabled={sendingEmailId === factura.id}
+                          title={factura.email_enviado ? 'Reenviar email' : 'Enviar email'}
+                        >
+                          {sendingEmailId === factura.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+                          ) : (
+                            <Send className="h-4 w-4 text-text-secondary" />
+                          )}
+                        </button>
                       )}
-                      PDF
-                    </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
                 )
