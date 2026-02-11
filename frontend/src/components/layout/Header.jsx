@@ -8,6 +8,9 @@ const pageTitles = {
   '/receptores': 'Receptores',
   '/notas-credito': 'Notas de Crédito',
   '/consultar-comprobantes': 'Consultar Comprobantes',
+  '/usuarios': 'Usuarios',
+  '/auditoria': 'Auditoría',
+  '/email': 'Configuración de Email',
 }
 
 function Header() {

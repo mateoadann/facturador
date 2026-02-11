@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 
 export const useAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       tenant: null,
       accessToken: null,
@@ -20,6 +20,18 @@ export const useAuthStore = create(
 
       setAccessToken: (token) => {
         set({ accessToken: token })
+      },
+
+      hasPermission: (permission) => {
+        const user = get().user
+        if (!user || !user.permisos) return false
+        return user.permisos.includes(permission)
+      },
+
+      hasAnyPermission: (...permissions) => {
+        const user = get().user
+        if (!user || !user.permisos) return false
+        return permissions.some((p) => user.permisos.includes(p))
       },
 
       logout: () => {

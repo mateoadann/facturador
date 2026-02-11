@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -10,28 +11,41 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  UserCog,
+  ClipboardList,
+  KeyRound,
+  Mail,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/sidebarStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useLogout } from '@/hooks/useAuth'
+import ChangePasswordModal from '@/components/auth/ChangePasswordModal'
 
 const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
+  { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard', permission: 'dashboard:ver' },
   {
     group: 'FACTURACIÓN',
     items: [
-      { icon: FileText, label: 'Facturar', href: '/facturar' },
-      { icon: Files, label: 'Ver Facturas', href: '/facturas' },
-      { icon: FileX, label: 'Notas de Crédito', href: '/notas-credito' },
-      { icon: Search, label: 'Consultar Comprobantes', href: '/consultar-comprobantes' },
+      { icon: FileText, label: 'Facturar', href: '/facturar', permission: 'facturar:importar' },
+      { icon: Files, label: 'Ver Facturas', href: '/facturas', permission: 'facturas:ver' },
+      { icon: FileX, label: 'Notas de Crédito', href: '/notas-credito', permission: 'facturar:importar' },
+      { icon: Search, label: 'Consultar Comprobantes', href: '/consultar-comprobantes', permission: 'comprobantes:consultar' },
     ],
   },
   {
     group: 'CONFIGURACIÓN',
     items: [
-      { icon: Building2, label: 'Facturadores', href: '/facturadores' },
-      { icon: Users, label: 'Receptores', href: '/receptores' },
+      { icon: Building2, label: 'Facturadores', href: '/facturadores', permission: 'facturadores:ver' },
+      { icon: Users, label: 'Receptores', href: '/receptores', permission: 'receptores:ver' },
+      { icon: Mail, label: 'Email', href: '/email', permission: 'email:configurar' },
+    ],
+  },
+  {
+    group: 'ADMINISTRACIÓN',
+    items: [
+      { icon: UserCog, label: 'Usuarios', href: '/usuarios', permission: 'usuarios:ver' },
+      { icon: ClipboardList, label: 'Auditoría', href: '/auditoria', permission: 'auditoria:ver' },
     ],
   },
 ]
@@ -59,16 +73,30 @@ function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore()
   const { user, tenant } = useAuthStore()
   const { mutate: logout } = useLogout()
+  const permisos = user?.permisos || []
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+
+  const filteredNavItems = navItems
+    .map((item) => {
+      if ('group' in item) {
+        const filteredItems = item.items.filter(
+          (sub) => !sub.permission || permisos.includes(sub.permission)
+        )
+        return filteredItems.length > 0 ? { ...item, items: filteredItems } : null
+      }
+      return !item.permission || permisos.includes(item.permission) ? item : null
+    })
+    .filter(Boolean)
 
   return (
     <aside
       className={cn(
-        'flex h-screen flex-col justify-between border-r border-border bg-sidebar transition-all duration-300',
+        'relative flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300',
         isCollapsed ? 'w-[72px]' : 'w-64'
       )}
     >
       {/* Top */}
-      <div className="p-4">
+      <div className="flex-1 overflow-y-auto p-4">
         {/* Logo */}
         <div
           className={cn(
@@ -82,13 +110,31 @@ function Sidebar() {
             className="h-10 w-10 rounded-lg object-cover"
           />
           {!isCollapsed && (
-            <span className="font-semibold text-text-primary">Facturador</span>
+            <>
+              <span className="flex-1 font-semibold text-text-primary">Facturador</span>
+              <button
+                onClick={toggle}
+                className="rounded-md p-1 text-text-secondary hover:bg-secondary"
+                title="Colapsar sidebar"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </>
+          )}
+          {isCollapsed && (
+            <button
+              onClick={toggle}
+              className="absolute right-0 top-5 translate-x-1/2 rounded-full border border-border bg-sidebar p-1 text-text-secondary hover:bg-secondary"
+              title="Expandir sidebar"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </button>
           )}
         </div>
 
         {/* Navigation */}
         <nav className="mt-4 space-y-1">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             if ('group' in item) {
               return (
                 <div key={item.group} className="pt-4">
@@ -117,7 +163,7 @@ function Sidebar() {
       </div>
 
       {/* Bottom */}
-      <div className="border-t border-border p-4">
+      <div className="flex-shrink-0 border-t border-border p-4">
         {/* User */}
         {!isCollapsed && (
           <div className="mb-3 flex items-center gap-3">
@@ -138,6 +184,17 @@ function Sidebar() {
         {/* Actions */}
         <div className="space-y-2">
           <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-secondary',
+              isCollapsed && 'justify-center px-0'
+            )}
+            title="Cambiar contraseña"
+          >
+            <KeyRound className="h-5 w-5" />
+            {!isCollapsed && <span>Cambiar contraseña</span>}
+          </button>
+          <button
             onClick={() => logout()}
             className={cn(
               'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-secondary',
@@ -147,24 +204,12 @@ function Sidebar() {
             <LogOut className="h-5 w-5" />
             {!isCollapsed && <span>Cerrar sesión</span>}
           </button>
-          <button
-            onClick={toggle}
-            className={cn(
-              'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-secondary',
-              isCollapsed && 'justify-center px-0'
-            )}
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5" />
-            ) : (
-              <>
-                <ChevronLeft className="h-5 w-5" />
-                <span>Colapsar</span>
-              </>
-            )}
-          </button>
         </div>
       </div>
+      <ChangePasswordModal
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+      />
     </aside>
   )
 }
