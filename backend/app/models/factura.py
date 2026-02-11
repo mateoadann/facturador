@@ -55,6 +55,11 @@ class Factura(db.Model):
     # Comprobante renderizado (HTML). El PDF se genera on-demand.
     comprobante_html = db.Column(db.Text)
 
+    # Email
+    email_enviado = db.Column(db.Boolean, default=False)
+    email_enviado_at = db.Column(db.DateTime)
+    email_error = db.Column(db.String(500))
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -93,6 +98,9 @@ class Factura(db.Model):
             'cbte_asoc_pto_vta': self.cbte_asoc_pto_vta,
             'cbte_asoc_nro': self.cbte_asoc_nro,
             'tiene_comprobante_html': bool(self.comprobante_html),
+            'email_enviado': self.email_enviado or False,
+            'email_enviado_at': self.email_enviado_at.isoformat() if self.email_enviado_at else None,
+            'email_error': self.email_error,
             'created_at': self.created_at.isoformat(),
             'facturador': self.facturador.to_dict() if self.facturador else None,
             'receptor': self.receptor.to_dict() if self.receptor else None,

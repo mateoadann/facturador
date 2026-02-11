@@ -3,13 +3,14 @@ from uuid import UUID
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
 from ..services.csv_parser import parse_csv
-from ..utils import tenant_required
+from ..utils import permission_required
+from ..services.audit import log_action
 
 facturas_bp = Blueprint('facturas', __name__)
 
 
 @facturas_bp.route('', methods=['GET'])
-@tenant_required
+@permission_required('facturas:ver')
 def list_facturas():
     """Listar facturas del tenant con filtros."""
     page = request.args.get('page', 1, type=int)
@@ -53,7 +54,7 @@ def list_facturas():
 
 
 @facturas_bp.route('/<uuid:factura_id>', methods=['GET'])
-@tenant_required
+@permission_required('facturas:ver')
 def get_factura(factura_id):
     """Obtener una factura por ID con items."""
     factura = Factura.query.filter_by(
@@ -68,7 +69,7 @@ def get_factura(factura_id):
 
 
 @facturas_bp.route('/<uuid:factura_id>/items', methods=['GET'])
-@tenant_required
+@permission_required('facturas:ver')
 def get_factura_items(factura_id):
     """Obtener solo los items de una factura."""
     factura = Factura.query.filter_by(
@@ -85,7 +86,7 @@ def get_factura_items(factura_id):
 
 
 @facturas_bp.route('/<uuid:factura_id>/comprobante-html', methods=['GET'])
-@tenant_required
+@permission_required('facturas:comprobante')
 def get_comprobante_html(factura_id):
     """Obtener (y persistir) el HTML del comprobante."""
     factura = Factura.query.filter_by(
@@ -114,7 +115,7 @@ def get_comprobante_html(factura_id):
 
 
 @facturas_bp.route('/<uuid:factura_id>/comprobante-pdf', methods=['GET'])
-@tenant_required
+@permission_required('facturas:comprobante')
 def get_comprobante_pdf(factura_id):
     """Generar PDF on-demand desde el HTML del comprobante."""
     factura = Factura.query.filter_by(
@@ -149,7 +150,7 @@ def get_comprobante_pdf(factura_id):
 
 
 @facturas_bp.route('/import', methods=['POST'])
-@tenant_required
+@permission_required('facturar:importar')
 def import_csv():
     """Importar facturas desde un archivo CSV."""
     if 'file' not in request.files:
@@ -225,6 +226,8 @@ def import_csv():
     if facturas_creadas:
         lote.facturador_id = facturas_creadas[0].facturador_id
 
+    log_action('lote:importar', recurso='lote', recurso_id=lote.id,
+               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas)})
     db.session.commit()
 
     return jsonify({
@@ -340,7 +343,7 @@ def _get_or_render_comprobante_html(factura: Factura, force: bool = False) -> st
 
 
 @facturas_bp.route('', methods=['DELETE'])
-@tenant_required
+@permission_required('facturas:eliminar')
 def bulk_delete_facturas():
     """Eliminar múltiples facturas (solo borradores y pendientes)."""
     data = request.get_json()
@@ -377,6 +380,7 @@ def bulk_delete_facturas():
 
     deleted_lote_ids = _sync_lotes_after_facturas_delete(affected_lote_ids, g.tenant_id)
 
+    log_action('facturas:eliminar', detalle={'cantidad': deleted_count})
     db.session.commit()
 
     return jsonify({
@@ -384,6 +388,47 @@ def bulk_delete_facturas():
         'deleted': deleted_count,
         'deleted_lote_ids': deleted_lote_ids,
     }), 200
+
+
+@facturas_bp.route('/<uuid:factura_id>/enviar-email', methods=['POST'])
+@permission_required('email:enviar')
+def enviar_email(factura_id):
+    """Enviar o reenviar comprobante por email al receptor."""
+    from ..models import EmailConfig
+
+    factura = Factura.query.filter_by(
+        id=factura_id,
+        tenant_id=g.tenant_id
+    ).first()
+
+    if not factura:
+        return jsonify({'error': 'Factura no encontrada'}), 404
+
+    if factura.estado != 'autorizado':
+        return jsonify({'error': 'Solo se pueden enviar comprobantes de facturas autorizadas'}), 400
+
+    if not factura.receptor or not factura.receptor.email:
+        return jsonify({'error': 'El receptor no tiene email configurado'}), 400
+
+    config = EmailConfig.query.filter_by(
+        tenant_id=g.tenant_id,
+        email_habilitado=True,
+    ).first()
+
+    if not config:
+        return jsonify({'error': 'No hay configuración de email habilitada'}), 400
+
+    from ..tasks.email import enviar_factura_email
+    enviar_factura_email.delay(str(factura.id))
+
+    log_action('email:enviar', recurso='factura', recurso_id=factura.id,
+               detalle={'receptor_email': factura.receptor.email})
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Email en proceso de envío',
+        'receptor_email': factura.receptor.email,
+    }), 202
 
 
 def _is_empty_lote(lote_id, tenant_id) -> bool:

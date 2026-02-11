@@ -75,7 +75,7 @@ def procesar_lote(self, lote_id: str):
                     result = procesar_factura(client, factura, facturador)
 
                     if _is_retryable_wsaa_error(result):
-                        sleep(1)
+                        sleep(5)
                         result = procesar_factura(client, factura, facturador)
 
                     if result.get('success'):
@@ -85,6 +85,11 @@ def procesar_lote(self, lote_id: str):
                         factura.numero_comprobante = result['numero_comprobante']
                         factura.arca_response = result.get('response')
                         ok += 1
+
+                        # Enviar email automáticamente si el receptor tiene email
+                        if factura.receptor and factura.receptor.email:
+                            from .email import enviar_factura_email
+                            enviar_factura_email.delay(str(factura.id))
                     else:
                         factura.estado = 'error'
                         factura.error_codigo = result.get('error_code')
