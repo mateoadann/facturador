@@ -119,10 +119,37 @@ def auth_headers(client, admin_user):
 
 
 @pytest.fixture
+def viewer_user(db, tenant):
+    """Create a viewer user."""
+    user = Usuario(
+        tenant_id=tenant.id,
+        email='viewer@test.com',
+        nombre='Viewer Test',
+        rol='viewer',
+        activo=True
+    )
+    user.set_password('test123')
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+@pytest.fixture
 def operator_headers(client, operator_user):
     """Get auth headers for operator user."""
     response = client.post('/api/auth/login', json={
         'email': 'operator@test.com',
+        'password': 'test123'
+    })
+    token = response.get_json()['access_token']
+    return {'Authorization': f'Bearer {token}'}
+
+
+@pytest.fixture
+def viewer_headers(client, viewer_user):
+    """Get auth headers for viewer user."""
+    response = client.post('/api/auth/login', json={
+        'email': 'viewer@test.com',
         'password': 'test123'
     })
     token = response.get_json()['access_token']

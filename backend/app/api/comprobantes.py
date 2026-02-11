@@ -2,13 +2,13 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import Facturador
 from ..services.encryption import decrypt_certificate
-from ..utils import tenant_required
+from ..utils import permission_required
 
 comprobantes_bp = Blueprint('comprobantes', __name__)
 
 
 @comprobantes_bp.route('/consultar', methods=['POST'])
-@tenant_required
+@permission_required('comprobantes:consultar')
 def consultar_comprobante():
     """Consultar un comprobante existente en ARCA."""
     data = request.get_json()
@@ -66,7 +66,7 @@ def consultar_comprobante():
 
 
 @comprobantes_bp.route('/ultimo-autorizado', methods=['POST'])
-@tenant_required
+@permission_required('comprobantes:consultar')
 def ultimo_autorizado():
     """Consultar el último número de comprobante autorizado."""
     data = request.get_json()

@@ -2,13 +2,14 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import Facturador
 from ..services.encryption import encrypt_certificate, decrypt_certificate
-from ..utils import tenant_required
+from ..utils import permission_required
+from ..services.audit import log_action
 
 facturadores_bp = Blueprint('facturadores', __name__)
 
 
 @facturadores_bp.route('', methods=['GET'])
-@tenant_required
+@permission_required('facturadores:ver')
 def list_facturadores():
     """Listar facturadores del tenant."""
     page = request.args.get('page', 1, type=int)
@@ -34,7 +35,7 @@ def list_facturadores():
 
 
 @facturadores_bp.route('/<uuid:facturador_id>', methods=['GET'])
-@tenant_required
+@permission_required('facturadores:ver')
 def get_facturador(facturador_id):
     """Obtener un facturador por ID."""
     facturador = Facturador.query.filter_by(
@@ -49,7 +50,7 @@ def get_facturador(facturador_id):
 
 
 @facturadores_bp.route('', methods=['POST'])
-@tenant_required
+@permission_required('facturadores:crear')
 def create_facturador():
     """Crear un nuevo facturador."""
     data = request.get_json()
@@ -86,13 +87,16 @@ def create_facturador():
     )
 
     db.session.add(facturador)
+    db.session.flush()
+    log_action('facturador:crear', recurso='facturador', recurso_id=facturador.id,
+               detalle={'cuit': data['cuit'], 'razon_social': data['razon_social']})
     db.session.commit()
 
     return jsonify(facturador.to_dict()), 201
 
 
 @facturadores_bp.route('/<uuid:facturador_id>', methods=['PUT'])
-@tenant_required
+@permission_required('facturadores:editar')
 def update_facturador(facturador_id):
     """Actualizar un facturador."""
     facturador = Facturador.query.filter_by(
@@ -145,13 +149,14 @@ def update_facturador(facturador_id):
     if 'activo' in data:
         facturador.activo = data['activo']
 
+    log_action('facturador:editar', recurso='facturador', recurso_id=facturador.id)
     db.session.commit()
 
     return jsonify(facturador.to_dict()), 200
 
 
 @facturadores_bp.route('/<uuid:facturador_id>', methods=['DELETE'])
-@tenant_required
+@permission_required('facturadores:eliminar')
 def delete_facturador(facturador_id):
     """Desactivar un facturador."""
     facturador = Facturador.query.filter_by(
@@ -164,13 +169,15 @@ def delete_facturador(facturador_id):
 
     # Soft delete
     facturador.activo = False
+    log_action('facturador:desactivar', recurso='facturador', recurso_id=facturador.id,
+               detalle={'cuit': facturador.cuit, 'razon_social': facturador.razon_social})
     db.session.commit()
 
     return jsonify({'message': 'Facturador desactivado'}), 200
 
 
 @facturadores_bp.route('/<uuid:facturador_id>/certificados', methods=['POST'])
-@tenant_required
+@permission_required('facturadores:certificados')
 def upload_certificados(facturador_id):
     """Subir certificados (cert y key) para un facturador."""
     facturador = Facturador.query.filter_by(
@@ -194,6 +201,8 @@ def upload_certificados(facturador_id):
         facturador.cert_encrypted = encrypt_certificate(cert_data)
         facturador.key_encrypted = encrypt_certificate(key_data)
 
+        log_action('facturador:certificados', recurso='facturador', recurso_id=facturador.id,
+                   detalle={'cuit': facturador.cuit})
         db.session.commit()
 
         return jsonify({
@@ -206,7 +215,7 @@ def upload_certificados(facturador_id):
 
 
 @facturadores_bp.route('/<uuid:facturador_id>/test-conexion', methods=['POST'])
-@tenant_required
+@permission_required('facturadores:ver')
 def test_conexion(facturador_id):
     """Probar conexión con ARCA para un facturador."""
     facturador = Facturador.query.filter_by(
@@ -253,7 +262,7 @@ def test_conexion(facturador_id):
 
 
 @facturadores_bp.route('/consultar-cuit', methods=['POST'])
-@tenant_required
+@permission_required('facturadores:ver')
 def consultar_cuit():
     """Consultar datos de un CUIT en el padrón de ARCA."""
     data = request.get_json()

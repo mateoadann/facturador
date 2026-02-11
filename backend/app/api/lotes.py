@@ -2,13 +2,14 @@ from flask import Blueprint, request, jsonify, g
 from uuid import UUID
 from ..extensions import db
 from ..models import Lote, Factura, Facturador
-from ..utils import tenant_required
+from ..utils import permission_required
+from ..services.audit import log_action
 
 lotes_bp = Blueprint('lotes', __name__)
 
 
 @lotes_bp.route('', methods=['GET'])
-@tenant_required
+@permission_required('facturas:ver')
 def list_lotes():
     """Listar lotes del tenant."""
     _purge_empty_lotes(g.tenant_id)
@@ -55,7 +56,7 @@ def _purge_empty_lotes(tenant_id):
 
 
 @lotes_bp.route('/<uuid:lote_id>', methods=['GET'])
-@tenant_required
+@permission_required('facturas:ver')
 def get_lote(lote_id):
     """Obtener un lote con estadísticas."""
     lote = Lote.query.filter_by(
@@ -88,7 +89,7 @@ def get_lote(lote_id):
 
 
 @lotes_bp.route('/<uuid:lote_id>/facturar', methods=['POST'])
-@tenant_required
+@permission_required('facturar:ejecutar')
 def facturar_lote(lote_id):
     """Iniciar el proceso de facturación masiva para un lote."""
     data = request.get_json(silent=True) or {}
@@ -167,6 +168,8 @@ def facturar_lote(lote_id):
 
     # Actualizar estado del lote
     lote.estado = 'procesando'
+    log_action('lote:facturar', recurso='lote', recurso_id=lote.id,
+               detalle={'etiqueta': lote.etiqueta, 'facturas_pendientes': facturas_pendientes})
     db.session.commit()
 
     # Disparar tarea de Celery
@@ -192,7 +195,7 @@ def facturar_lote(lote_id):
 
 
 @lotes_bp.route('/<uuid:lote_id>', methods=['DELETE'])
-@tenant_required
+@permission_required('facturas:eliminar')
 def delete_lote(lote_id):
     """Eliminar un lote (solo si no tiene facturas autorizadas)."""
     lote = Lote.query.filter_by(
@@ -216,6 +219,9 @@ def delete_lote(lote_id):
 
     # Eliminar facturas del lote
     Factura.query.filter_by(lote_id=lote_id).delete()
+
+    log_action('lote:eliminar', recurso='lote', recurso_id=lote.id,
+               detalle={'etiqueta': lote.etiqueta})
 
     # Eliminar lote
     db.session.delete(lote)

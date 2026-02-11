@@ -3,13 +3,13 @@ from flask import Blueprint, g, jsonify
 from sqlalchemy import func
 from ..extensions import db
 from ..models import Factura
-from ..utils import tenant_required
+from ..utils import permission_required
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
 
 @dashboard_bp.route('/stats', methods=['GET'])
-@tenant_required
+@permission_required('dashboard:ver')
 def get_stats():
     """Obtener estadísticas del dashboard."""
 

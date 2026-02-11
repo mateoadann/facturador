@@ -2,13 +2,14 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import Receptor, Facturador
 from ..services.encryption import decrypt_certificate
-from ..utils import tenant_required
+from ..utils import permission_required
+from ..services.audit import log_action
 
 receptores_bp = Blueprint('receptores', __name__)
 
 
 @receptores_bp.route('', methods=['GET'])
-@tenant_required
+@permission_required('receptores:ver')
 def list_receptores():
     """Listar receptores del tenant."""
     page = request.args.get('page', 1, type=int)
@@ -43,7 +44,7 @@ def list_receptores():
 
 
 @receptores_bp.route('/<uuid:receptor_id>', methods=['GET'])
-@tenant_required
+@permission_required('receptores:ver')
 def get_receptor(receptor_id):
     """Obtener un receptor por ID."""
     receptor = Receptor.query.filter_by(
@@ -58,7 +59,7 @@ def get_receptor(receptor_id):
 
 
 @receptores_bp.route('', methods=['POST'])
-@tenant_required
+@permission_required('receptores:crear')
 def create_receptor():
     """Crear un nuevo receptor."""
     data = request.get_json()
@@ -94,13 +95,16 @@ def create_receptor():
     )
 
     db.session.add(receptor)
+    db.session.flush()
+    log_action('receptor:crear', recurso='receptor', recurso_id=receptor.id,
+               detalle={'doc_nro': doc_nro, 'razon_social': data['razon_social']})
     db.session.commit()
 
     return jsonify(receptor.to_dict()), 201
 
 
 @receptores_bp.route('/<uuid:receptor_id>', methods=['PUT'])
-@tenant_required
+@permission_required('receptores:editar')
 def update_receptor(receptor_id):
     """Actualizar un receptor."""
     receptor = Receptor.query.filter_by(
@@ -127,13 +131,14 @@ def update_receptor(receptor_id):
     if 'activo' in data:
         receptor.activo = data['activo']
 
+    log_action('receptor:editar', recurso='receptor', recurso_id=receptor.id)
     db.session.commit()
 
     return jsonify(receptor.to_dict()), 200
 
 
 @receptores_bp.route('/<uuid:receptor_id>', methods=['DELETE'])
-@tenant_required
+@permission_required('receptores:eliminar')
 def delete_receptor(receptor_id):
     """Desactivar un receptor."""
     receptor = Receptor.query.filter_by(
@@ -146,13 +151,15 @@ def delete_receptor(receptor_id):
 
     # Soft delete
     receptor.activo = False
+    log_action('receptor:eliminar', recurso='receptor', recurso_id=receptor.id,
+               detalle={'doc_nro': receptor.doc_nro, 'razon_social': receptor.razon_social})
     db.session.commit()
 
     return jsonify({'message': 'Receptor desactivado'}), 200
 
 
 @receptores_bp.route('/consultar-cuit', methods=['POST'])
-@tenant_required
+@permission_required('receptores:ver')
 def consultar_cuit():
     """Consultar datos de un CUIT en el padrón de ARCA."""
     data = request.get_json()

@@ -35,8 +35,33 @@ with app.app_context():
         )
         admin.set_password('admin123')
         db.session.add(admin)
+
+        # Crear usuario operador
+        operator = Usuario(
+            tenant_id=tenant.id,
+            email='operador@facturador.local',
+            nombre='Operador',
+            rol='operator',
+            activo=True
+        )
+        operator.set_password('operador123')
+        db.session.add(operator)
+
+        # Crear usuario viewer
+        viewer = Usuario(
+            tenant_id=tenant.id,
+            email='viewer@facturador.local',
+            nombre='Viewer',
+            rol='viewer',
+            activo=True
+        )
+        viewer.set_password('viewer123')
+        db.session.add(viewer)
+
         db.session.commit()
 
         print(f'Tenant creado: {tenant.nombre} (ID: {tenant.id})')
-        print(f'Usuario creado: {admin.email} / admin123')
+        print(f'Usuario admin: {admin.email} / admin123')
+        print(f'Usuario operador: {operator.email} / operador123')
+        print(f'Usuario viewer: {viewer.email} / viewer123')
         print('Seed completado.')

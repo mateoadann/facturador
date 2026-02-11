@@ -16,6 +16,9 @@ class Usuario(db.Model):
     activo = db.Column(db.Boolean, default=True)
     ultimo_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    password_changed_at = db.Column(db.DateTime)
+    login_attempts = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime)
 
     __table_args__ = (
         db.UniqueConstraint('tenant_id', 'email', name='unique_tenant_email'),
@@ -30,8 +33,8 @@ class Usuario(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_permissions=False):
+        data = {
             'id': str(self.id),
             'tenant_id': str(self.tenant_id),
             'email': self.email,
@@ -41,3 +44,7 @@ class Usuario(db.Model):
             'ultimo_login': self.ultimo_login.isoformat() if self.ultimo_login else None,
             'created_at': self.created_at.isoformat()
         }
+        if include_permissions:
+            from ..services.permissions import get_user_permissions
+            data['permisos'] = get_user_permissions(self.rol)
+        return data
