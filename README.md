@@ -27,7 +27,7 @@ Este proyecto utiliza la libreria `arca_arg` para interactuar con los web servic
     <img alt="Repositorio GitHub arca_arg" src="https://img.shields.io/badge/GitHub-arca__arg-111827?style=flat-square&labelColor=374151&logo=github&logoColor=white" />
   </a>
 
-## Estado del proyecto (2026-02-10)
+## Estado del proyecto (2026-02-11)
 
 Actualmente el proyecto puede:
 
@@ -49,6 +49,15 @@ Actualmente el proyecto puede:
 - Generar comprobante HTML y PDF desde backend.
   - motor PDF actual: Playwright + Chromium
   - QR fiscal orientado a validacion en ARCA desde celular
+- Seguridad y control de acceso:
+  - 3 roles con permisos granulares: admin (todo), operator (operar), viewer (solo lectura)
+  - CRUD de usuarios con activacion/desactivacion
+  - Proteccion de endpoints por permisos (`@permission_required`)
+  - Sidebar dinamica que muestra solo secciones permitidas
+  - Rutas protegidas en frontend con redireccion automatica
+  - Rate limiting en login: lockout de 15 min tras 5 intentos fallidos
+  - Auditoria completa: quien hizo que, cuando, desde que IP, con pagina para admins
+  - Cambio de contrasena desde la UI
 
 ## Proximas implementaciones
 
@@ -110,8 +119,11 @@ celery -A celery_worker.celery worker --loglevel=info
 
 Despues de ejecutar `python seed.py`:
 
-- Email: `admin@facturador.local`
-- Password: `admin123`
+| Email | Password | Rol |
+|---|---|---|
+| `admin@facturador.local` | `admin123` | Admin (acceso total) |
+| `operador@facturador.local` | `operador123` | Operador (facturar, receptores) |
+| `viewer@facturador.local` | `viewer123` | Viewer (solo lectura) |
 
 ## Estructura del proyecto
 

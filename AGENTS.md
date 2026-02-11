@@ -20,7 +20,7 @@ Guide for agentic coding tools working in this repository.
 - `make up` -> start full docker stack.
 - `make up-build` -> start stack with image rebuild.
 - `make migrate` -> run DB migrations.
-- `make seed` -> seed tenant + admin.
+- `make seed` -> seed tenant + users (admin, operator, viewer).
 - `make bootstrap` -> up + migrate + seed.
 - `make test-backend` -> run backend tests in container.
 - `make lint-frontend` -> run frontend lint in container.
@@ -63,10 +63,13 @@ Guide for agentic coding tools working in this repository.
 - Flask app factory: `backend/app/__init__.py`
 - API blueprints: `backend/app/api/*.py`
 - Models: `backend/app/models/*.py`
+- Permissions and roles: `backend/app/services/permissions.py`
+- Audit logging: `backend/app/services/audit.py`
 - CSV import path: `POST /api/facturas/import`
 - Lote processing task: `backend/app/tasks/facturacion.py`
 - ARCA wrappers: `arca_integration/client.py`, `arca_integration/services/*`
 - Frontend API client: `frontend/src/api/client.js`
+- Frontend permission hooks: `frontend/src/hooks/usePermission.js`
 - Main invoicing screen: `frontend/src/pages/facturar/index.jsx`
 
 ## Backend style guidelines (Python)
@@ -94,10 +97,15 @@ Guide for agentic coding tools working in this repository.
 - Use broad `except Exception` only when translating external library errors.
 - Keep payload key names stable; frontend depends on exact response keys.
 
-## Multi-tenancy and data integrity rules
+## Security, permissions, and multi-tenancy rules
 - Always filter tenant-owned entities by `tenant_id`.
-- Use `@tenant_required` for tenant-context routes.
-- Use `@admin_required` for admin-only operations.
+- Use `@permission_required('recurso:accion')` for resource endpoints (replaces `@tenant_required` on most routes).
+- Use `@tenant_required` only for transversal endpoints (jobs, change-password).
+- 3 roles defined in `backend/app/services/permissions.py`: admin (all), operator (operate), viewer (read-only).
+- Permission format: `recurso:accion` (e.g., `facturadores:crear`, `facturas:ver`).
+- All write endpoints must call `log_action()` from `backend/app/services/audit.py` before commit.
+- `log_action()` does NOT commit; it participates in the caller's transaction.
+- Login rate limiting: 5 failed attempts -> 15 min lockout (fields `login_attempts`, `locked_until` on `Usuario`).
 - Never leak cross-tenant data.
 - When deleting/updating related entities, sync aggregate counters.
 - Empty lotes should be removed to avoid stale UI and label collisions.
@@ -137,16 +145,25 @@ Guide for agentic coding tools working in this repository.
 - Run frontend lint/build when touching frontend logic.
 - Verify tenant isolation is still enforced.
 - Verify lote counters and lifecycle remain consistent.
+- New write endpoints must use `@permission_required` and call `log_action()`.
+- New frontend pages/sections must be gated by permissions in Sidebar and routes.
 - Document non-obvious behavior changes in your final summary.
 
 ## Fast file map
 - `backend/app/api/facturas.py` -> import, invoice CRUD, bulk delete.
 - `backend/app/api/lotes.py` -> lote listing/facturar/delete.
+- `backend/app/api/usuarios.py` -> user CRUD, activate/deactivate.
+- `backend/app/api/audit.py` -> audit log listing.
+- `backend/app/services/permissions.py` -> role/permission definitions.
+- `backend/app/services/audit.py` -> `log_action()` helper.
 - `backend/app/services/csv_parser.py` -> CSV parsing and grouping.
 - `backend/app/tasks/facturacion.py` -> async ARCA emission.
 - `backend/app/services/comprobante_renderer.py` -> invoice HTML/QR.
 - `backend/app/services/comprobante_pdf.py` -> HTML->PDF rendering.
 - `frontend/src/pages/facturar/index.jsx` -> lote picker/table/actions.
+- `frontend/src/pages/usuarios/index.jsx` -> user management page.
+- `frontend/src/pages/auditoria/index.jsx` -> audit log viewer.
+- `frontend/src/hooks/usePermission.js` -> permission hooks.
 - `frontend/src/hooks/useJobStatus.js` -> Celery polling.
 
 Keep changes minimal, tenant-safe, and test-backed.
