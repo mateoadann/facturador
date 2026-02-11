@@ -10,7 +10,6 @@ import {
   TableHead,
   TableCell,
   Input,
-  Select,
   Button,
 } from '@/components/ui'
 
