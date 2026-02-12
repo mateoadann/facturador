@@ -1,85 +1,78 @@
+# Base compose — servicios comunes compartidos entre dev y prod.
+# Usar con override: docker compose -f docker-compose.yml -f docker-compose.{dev,prod}.yml up -d
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: facturador
-      POSTGRES_USER: facturador
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB:-facturador}
+      POSTGRES_USER: ${POSTGRES_USER:-facturador}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - facturador_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U facturador"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-facturador}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - internal
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - internal
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     working_dir: /app
-    ports:
-      - "5003:5000"
     environment:
-      - FLASK_ENV=development
       - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://facturador:password@postgres:5432/facturador
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-facturador}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-facturador}
       - REDIS_URL=redis://redis:6379/1
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - JWT_SECRET_KEY=jwt-secret-key-change-in-production
-      - ENCRYPTION_KEY=32-caracteres-exactos-para-fern
-      - CORS_ORIGINS=http://localhost:5173
-      - ARCA_AMBIENTE=testing
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-caracteres-exactos-para-fern}
+      - ARCA_AMBIENTE=${ARCA_AMBIENTE:-testing}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-      - ./arca_integration:/app/arca_integration
+    networks:
+      - internal
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     working_dir: /app
     command: celery -A celery_worker.celery worker --loglevel=info
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://facturador:password@postgres:5432/facturador
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-facturador}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-facturador}
       - REDIS_URL=redis://redis:6379/1
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - ENCRYPTION_KEY=32-caracteres-exactos-para-fern
-      - ARCA_AMBIENTE=testing
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-caracteres-exactos-para-fern}
+      - ARCA_AMBIENTE=${ARCA_AMBIENTE:-testing}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-      - ./arca_integration:/app/arca_integration
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "5173:5173"
-    environment:
-      - API_PROXY_TARGET=http://api:5000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    depends_on:
-      - api
+    networks:
+      - internal
 
 volumes:
-  postgres_data:
+  facturador_postgres_data:
+
+networks:
+  internal:

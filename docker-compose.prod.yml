@@ -1,0 +1,42 @@
+# Override PROD — sin puertos expuestos, proxy_net externo, restart policies, nginx estático.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  api:
+    container_name: facturador_api
+    restart: unless-stopped
+    environment:
+      - FLASK_ENV=production
+    expose:
+      - "5000"
+    networks:
+      - internal
+      - proxy_net
+
+  worker:
+    container_name: facturador_worker
+    restart: unless-stopped
+
+  frontend:
+    container_name: facturador_frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    expose:
+      - "80"
+    depends_on:
+      - api
+    networks:
+      - internal
+      - proxy_net
+
+networks:
+  proxy_net:
+    external: true

@@ -2,12 +2,15 @@
 
 SHELL := /bin/bash
 DOCKER_COMPOSE ?= docker compose
-DC := $(DOCKER_COMPOSE) -f docker-compose.yml
+
+# Entorno: dev (default) o prod
+ENV ?= dev
+DC := $(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.$(ENV).yml
 
 .PHONY: help env up up-build down stop start restart ps logs logs-api logs-worker logs-frontend logs-db build pull reset clean prune ensure-api ensure-frontend migrate makemigrations seed bootstrap test test-backend lint-frontend build-frontend pre-push shell-api shell-worker shell-frontend db-shell
 
 help: ## Show available commands
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target> [ENV=dev|prod]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 env: ## Create .env from .env.example if missing
 	@if [ ! -f .env ]; then cp .env.example .env; echo ".env created from .env.example"; else echo ".env already exists"; fi

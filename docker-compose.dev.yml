@@ -1,0 +1,41 @@
+# Override DEV — hot reload, puertos expuestos, volúmenes de código fuente.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  api:
+    environment:
+      - FLASK_ENV=development
+    ports:
+      - "5003:5000"
+    volumes:
+      - ./backend:/app
+      - ./arca_integration:/app/arca_integration
+
+  worker:
+    volumes:
+      - ./backend:/app
+      - ./arca_integration:/app/arca_integration
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - API_PROXY_TARGET=http://api:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+    networks:
+      - internal
