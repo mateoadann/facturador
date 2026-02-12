@@ -7,10 +7,10 @@ DOCKER_COMPOSE ?= docker compose
 ENV ?= dev
 DC := $(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.$(ENV).yml
 
-.PHONY: help env up up-build down stop start restart ps logs logs-api logs-worker logs-frontend logs-db build pull reset clean prune ensure-api ensure-frontend migrate makemigrations seed bootstrap test test-backend lint-frontend build-frontend pre-push shell-api shell-worker shell-frontend db-shell
+.PHONY: help env up up-build down stop start restart ps logs logs-api logs-worker logs-frontend logs-db build pull reset clean prune ensure-api ensure-frontend migrate makemigrations seed bootstrap bootstrap-prod test test-backend lint-frontend build-frontend pre-push shell-api shell-worker shell-frontend db-shell prod prod-build prod-down prod-logs prod-ps prod-restart proxy-net
 
 help: ## Show available commands
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target> [ENV=dev|prod]\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target> [ENV=dev|prod]\n\nDEV (default):  make up-build\nPROD:           make prod-build\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 env: ## Create .env from .env.example if missing
 	@if [ ! -f .env ]; then cp .env.example .env; echo ".env created from .env.example"; else echo ".env already exists"; fi
@@ -113,3 +113,30 @@ clean: down ## Stop stack and remove local volumes
 
 prune: ## Remove dangling Docker resources
 	docker system prune -f
+
+# ── Producción ────────────────────────────────────────────────────────────────
+
+proxy-net: ## Create external proxy_net network (once)
+	@docker network inspect proxy_net >/dev/null 2>&1 || (docker network create proxy_net && echo "proxy_net created") && echo "proxy_net already exists"
+
+prod: proxy-net env ## Start prod stack
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+prod-build: proxy-net env ## Build and start prod stack
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+prod-down: ## Stop prod stack
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml down
+
+prod-logs: ## Follow prod logs
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml logs -f --tail=150
+
+prod-ps: ## Show prod stack status
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml ps
+
+prod-restart: ## Restart prod services
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml restart
+
+bootstrap-prod: prod-build ## First-time prod setup (build + migrate + seed)
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml exec api flask db upgrade
+	$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml exec api python seed.py
