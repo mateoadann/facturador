@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Wifi, Send, Loader2 } from 'lucide-react'
+import { Save, Wifi, Send, Loader2, FileText } from 'lucide-react'
 import { api } from '@/api/client'
 import { toast } from '@/stores/toastStore'
 import { Card } from '@/components/ui'
@@ -17,6 +17,9 @@ function Email() {
     from_email: '',
     from_name: '',
     email_habilitado: true,
+    email_asunto: '',
+    email_mensaje: '',
+    email_saludo: '',
   })
   const [testEmail, setTestEmail] = useState('')
 
@@ -39,6 +42,9 @@ function Email() {
         from_email: config.from_email || '',
         from_name: config.from_name || '',
         email_habilitado: config.email_habilitado ?? true,
+        email_asunto: config.email_asunto || '',
+        email_mensaje: config.email_mensaje || '',
+        email_saludo: config.email_saludo || '',
       })
     }
   }, [config])
@@ -83,6 +89,9 @@ function Email() {
       from_email: formData.from_email,
       from_name: formData.from_name,
       email_habilitado: formData.email_habilitado,
+      email_asunto: formData.email_asunto,
+      email_mensaje: formData.email_mensaje,
+      email_saludo: formData.email_saludo,
     }
     if (formData.smtp_password) {
       payload.smtp_password = formData.smtp_password
@@ -216,34 +225,96 @@ function Email() {
         </div>
       </Card>
 
-      {/* Test Send */}
-      <Card>
-        <div className="mb-5">
-          <h2 className="text-lg font-semibold text-text-primary">Email de prueba</h2>
-          <p className="text-sm text-text-muted">
-            Enviá un email de prueba para verificar que todo funciona correctamente.
-          </p>
-        </div>
+      {/* Personalización del email */}
+      {config?.configured && (
+        <Card>
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold text-text-primary">Personalización del email</h2>
+            <p className="text-sm text-text-muted">
+              Personalizá el contenido del email que se envía con los comprobantes.
+              Dejá los campos vacíos para usar los valores predeterminados.
+            </p>
+          </div>
 
-        <div className="flex items-end gap-3">
-          <Input
-            label="Email de destino"
-            type="email"
-            placeholder="test@ejemplo.com"
-            value={testEmail}
-            onChange={(e) => setTestEmail(e.target.value)}
-            className="flex-1"
-          />
-          <Button
-            variant="secondary"
-            icon={Send}
-            onClick={handleTestSend}
-            disabled={!config?.configured || testSendMutation.isPending}
-          >
-            {testSendMutation.isPending ? 'Enviando...' : 'Enviar prueba'}
-          </Button>
-        </div>
-      </Card>
+          <div className="space-y-4">
+            <div>
+              <Input
+                label="Asunto"
+                placeholder="Comprobante 00001-00000042 - Mi Empresa SRL"
+                value={formData.email_asunto}
+                onChange={(e) => setFormData({ ...formData, email_asunto: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Podés usar <code className="rounded bg-secondary px-1">{'{comprobante}'}</code> y <code className="rounded bg-secondary px-1">{'{facturador}'}</code> para insertar datos automáticamente.
+              </p>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-text-primary">
+                Mensaje principal
+              </label>
+              <textarea
+                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                rows={5}
+                placeholder="Adjunto encontrará el comprobante electrónico correspondiente."
+                value={formData.email_mensaje}
+                onChange={(e) => setFormData({ ...formData, email_mensaje: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Texto que aparece en el cuerpo del email. Podés incluir información de pago, datos bancarios, etc.
+              </p>
+            </div>
+
+            <Input
+              label="Saludo"
+              placeholder="Saludos cordiales"
+              value={formData.email_saludo}
+              onChange={(e) => setFormData({ ...formData, email_saludo: e.target.value })}
+            />
+          </div>
+
+          <div className="mt-6">
+            <Button
+              icon={Save}
+              onClick={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? 'Guardando...' : 'Guardar configuración'}
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Test Send */}
+      {config?.configured && (
+        <Card>
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold text-text-primary">Email de prueba</h2>
+            <p className="text-sm text-text-muted">
+              Enviá un email de prueba para verificar que todo funciona correctamente.
+            </p>
+          </div>
+
+          <div className="flex items-end gap-3">
+            <Input
+              label="Email de destino"
+              type="email"
+              placeholder="test@ejemplo.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              icon={Send}
+              onClick={handleTestSend}
+              disabled={testSendMutation.isPending}
+            >
+              {testSendMutation.isPending ? 'Enviando...' : 'Enviar prueba'}
+            </Button>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
