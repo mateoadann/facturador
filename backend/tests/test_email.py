@@ -268,6 +268,102 @@ class TestEnviarEmailFactura:
         assert resp.status_code == 403
 
 
+class TestEmailPersonalizacion:
+    """Tests para campos de personalización del email."""
+
+    def test_guardar_campos_personalizacion(self, client, auth_headers, email_config):
+        """PUT config guarda campos de personalización."""
+        resp = client.put('/api/email/config', headers=auth_headers, json={
+            'smtp_host': 'smtp.test.com',
+            'smtp_user': 'user@test.com',
+            'from_email': 'noreply@test.com',
+            'email_asunto': 'Factura {comprobante} - {facturador}',
+            'email_mensaje': 'Le enviamos su factura.\nDatos bancarios: CBU 123456',
+            'email_saludo': 'Atentamente, El equipo',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['email_asunto'] == 'Factura {comprobante} - {facturador}'
+        assert data['email_mensaje'] == 'Le enviamos su factura.\nDatos bancarios: CBU 123456'
+        assert data['email_saludo'] == 'Atentamente, El equipo'
+
+    def test_get_config_con_personalizacion(self, client, auth_headers, db, email_config):
+        """GET config devuelve campos de personalización."""
+        email_config.email_asunto = 'Asunto custom'
+        email_config.email_mensaje = 'Mensaje custom'
+        email_config.email_saludo = 'Saludo custom'
+        db.session.commit()
+
+        resp = client.get('/api/email/config', headers=auth_headers)
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['email_asunto'] == 'Asunto custom'
+        assert data['email_mensaje'] == 'Mensaje custom'
+        assert data['email_saludo'] == 'Saludo custom'
+
+    def test_campos_vacios_se_guardan_como_null(self, client, auth_headers, email_config):
+        """Campos vacíos se guardan como NULL (usa defaults)."""
+        resp = client.put('/api/email/config', headers=auth_headers, json={
+            'smtp_host': 'smtp.test.com',
+            'smtp_user': 'user@test.com',
+            'from_email': 'noreply@test.com',
+            'email_asunto': '',
+            'email_mensaje': '   ',
+            'email_saludo': '',
+        })
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['email_asunto'] is None
+        assert data['email_mensaje'] is None
+        assert data['email_saludo'] is None
+
+    def test_build_subject_custom(self, app):
+        """Asunto custom reemplaza {comprobante} y {facturador}."""
+        with app.app_context():
+            from app.services.email_service import _build_subject
+
+            class FakeConfig:
+                email_asunto = 'Factura {comprobante} de {facturador}'
+
+            result = _build_subject(FakeConfig(), '00001-00000042', 'Mi Empresa SRL')
+            assert result == 'Factura 00001-00000042 de Mi Empresa SRL'
+
+    def test_build_subject_default(self, app):
+        """Sin asunto custom usa el default."""
+        with app.app_context():
+            from app.services.email_service import _build_subject
+
+            class FakeConfig:
+                email_asunto = None
+
+            result = _build_subject(FakeConfig(), '00001-00000042', 'Mi Empresa SRL')
+            assert result == 'Comprobante 00001-00000042 - Mi Empresa SRL'
+
+    def test_build_body_con_mensaje_custom(self, app, factura_autorizada, db, email_config):
+        """Body usa mensaje y saludo custom cuando están configurados."""
+        email_config.email_mensaje = 'Mensaje personalizado.\nSegunda línea.'
+        email_config.email_saludo = 'Cordialmente'
+        db.session.commit()
+
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(factura_autorizada, 'Test SRL', email_config)
+
+        assert 'Mensaje personalizado.' in html
+        assert 'Segunda línea.' in html
+        assert '<br>' in html  # Saltos de línea convertidos
+        assert 'Cordialmente' in html
+
+    def test_build_body_defaults(self, app, factura_autorizada, email_config):
+        """Body usa defaults cuando no hay personalización."""
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(factura_autorizada, 'Test SRL', email_config)
+
+        assert 'comprobante electrónico' in html
+        assert 'Saludos cordiales' in html
+
+
 class TestEmailServiceUnit:
     """Tests unitarios para el servicio de email."""
 

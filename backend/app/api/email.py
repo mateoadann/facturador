@@ -43,6 +43,11 @@ def update_config():
 
     config = EmailConfig.query.filter_by(tenant_id=g.tenant_id).first()
 
+    # Campos de personalización (se aplican en ambos casos)
+    email_asunto = data.get('email_asunto', '').strip() or None
+    email_mensaje = data.get('email_mensaje', '').strip() or None
+    email_saludo = data.get('email_saludo', '').strip() or None
+
     if config:
         config.smtp_host = data['smtp_host']
         config.smtp_port = smtp_port
@@ -51,6 +56,9 @@ def update_config():
         config.from_email = data['from_email']
         config.from_name = data.get('from_name', '')
         config.email_habilitado = data.get('email_habilitado', True)
+        config.email_asunto = email_asunto
+        config.email_mensaje = email_mensaje
+        config.email_saludo = email_saludo
 
         if data.get('smtp_password'):
             config.smtp_password_encrypted = encrypt_certificate(
@@ -72,6 +80,9 @@ def update_config():
             from_email=data['from_email'],
             from_name=data.get('from_name', ''),
             email_habilitado=data.get('email_habilitado', True),
+            email_asunto=email_asunto,
+            email_mensaje=email_mensaje,
+            email_saludo=email_saludo,
         )
         db.session.add(config)
 

@@ -118,12 +118,12 @@ def send_comprobante_email(factura):
     numero = int(factura.numero_comprobante or 0)
     filename = f'comprobante-{punto_venta:05d}-{numero:08d}.pdf'
 
-    # Construir asunto
+    # Construir asunto y body usando config personalizable
     facturador_nombre = factura.facturador.razon_social if factura.facturador else 'Facturador'
-    subject = f'Comprobante {punto_venta:05d}-{numero:08d} - {facturador_nombre}'
+    comprobante_str = f'{punto_venta:05d}-{numero:08d}'
 
-    # Construir body HTML
-    body_html = _build_comprobante_email_body(factura, facturador_nombre)
+    subject = _build_subject(config, comprobante_str, facturador_nombre)
+    body_html = _build_comprobante_email_body(factura, facturador_nombre, config)
 
     send_email(
         config=config,
@@ -151,13 +151,28 @@ def send_test_email(config, to_email):
     send_email(config, to_email, subject, body)
 
 
-def _build_comprobante_email_body(factura, facturador_nombre):
+def _build_subject(config, comprobante_str, facturador_nombre):
+    """Construye el asunto del email usando config o default."""
+    if config.email_asunto:
+        return config.email_asunto.replace(
+            '{comprobante}', comprobante_str
+        ).replace(
+            '{facturador}', facturador_nombre
+        )
+    return f'Comprobante {comprobante_str} - {facturador_nombre}'
+
+
+def _build_comprobante_email_body(factura, facturador_nombre, config):
     """Construye el HTML del cuerpo del email de comprobante."""
-    punto_venta = int(factura.punto_venta or 0)
-    numero = int(factura.numero_comprobante or 0)
-    importe = float(factura.importe_total)
-    fecha = factura.fecha_emision.strftime('%d/%m/%Y') if factura.fecha_emision else ''
     receptor_nombre = factura.receptor.razon_social if factura.receptor else ''
+
+    mensaje = config.email_mensaje if config.email_mensaje else (
+        'Adjunto encontrará el comprobante electrónico correspondiente.'
+    )
+    # Convertir saltos de línea a <br> para HTML
+    mensaje_html = mensaje.replace('\n', '<br>')
+
+    saludo = config.email_saludo if config.email_saludo else 'Saludos cordiales'
 
     return f"""
     <html>
@@ -168,30 +183,9 @@ def _build_comprobante_email_body(factura, facturador_nombre):
 
         <p>Estimado/a <strong>{receptor_nombre}</strong>,</p>
 
-        <p>Adjunto encontrará el comprobante electrónico correspondiente a:</p>
+        <p>{mensaje_html}</p>
 
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-            <tr>
-                <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600;">Comprobante</td>
-                <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{punto_venta:05d}-{numero:08d}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600;">Fecha</td>
-                <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{fecha}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600;">Importe Total</td>
-                <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">$ {importe:,.2f}</td>
-            </tr>
-            <tr>
-                <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-weight: 600;">CAE</td>
-                <td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{factura.cae or ''}</td>
-            </tr>
-        </table>
-
-        <p style="color: #64748b; font-size: 13px;">
-            Este comprobante fue autorizado por ARCA (ex-AFIP) y es válido como factura electrónica.
-        </p>
+        <p>{saludo}</p>
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
         <p style="color: #94a3b8; font-size: 11px;">
