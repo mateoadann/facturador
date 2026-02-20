@@ -1,6 +1,8 @@
 import pytest
 import io
-from app.models import Receptor, Tenant, Usuario
+from datetime import date
+from decimal import Decimal
+from app.models import Receptor, Tenant, Usuario, Factura
 
 
 class TestListReceptores:
@@ -62,6 +64,100 @@ class TestUpdateReceptor:
         )
         assert response.status_code == 200
         assert response.get_json()['email'] == 'nuevo@email.com'
+
+    def test_update_doc_nro_success(self, client, auth_headers, receptor):
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-22222222-2'}
+        )
+        assert response.status_code == 200
+        assert response.get_json()['doc_nro'] == '30222222222'
+
+    def test_update_doc_nro_invalid_format(self, client, auth_headers, receptor):
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-abc'}
+        )
+        assert response.status_code == 400
+        assert response.get_json()['error'] == 'CUIT/CUIL inválido'
+
+    def test_update_doc_nro_rejects_duplicate_same_tenant(self, client, auth_headers, receptor, db):
+        another = Receptor(
+            tenant_id=receptor.tenant_id,
+            doc_tipo=80,
+            doc_nro='30222222222',
+            razon_social='Otro Receptor',
+            activo=True
+        )
+        db.session.add(another)
+        db.session.commit()
+
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-22222222-2'}
+        )
+        assert response.status_code == 400
+        assert response.get_json()['error'] == 'Ya existe un receptor con ese documento'
+
+    def test_update_doc_nro_same_value_ok(self, client, auth_headers, receptor):
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-11111111-1'}
+        )
+        assert response.status_code == 200
+        assert response.get_json()['doc_nro'] == '30111111111'
+
+    def test_update_doc_nro_blocked_if_has_factura_autorizada(self, client, auth_headers, receptor, facturador, db):
+        factura = Factura(
+            tenant_id=receptor.tenant_id,
+            facturador_id=facturador.id,
+            receptor_id=receptor.id,
+            tipo_comprobante=1,
+            concepto=1,
+            punto_venta=1,
+            fecha_emision=date(2026, 1, 15),
+            importe_total=Decimal('121.00'),
+            importe_neto=Decimal('100.00'),
+            importe_iva=Decimal('21.00'),
+            estado='autorizado'
+        )
+        db.session.add(factura)
+        db.session.commit()
+
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-33333333-3'}
+        )
+        assert response.status_code == 400
+        assert response.get_json()['error'] == 'No se puede modificar el CUIT de un receptor con facturas autorizadas'
+
+    def test_update_doc_nro_allows_duplicate_in_other_tenant(self, client, auth_headers, receptor, db):
+        other_tenant = Tenant(nombre='Other Tenant CUIT', slug='other-tenant-cuit', activo=True)
+        db.session.add(other_tenant)
+        db.session.flush()
+
+        other_receptor = Receptor(
+            tenant_id=other_tenant.id,
+            doc_tipo=80,
+            doc_nro='30444444444',
+            razon_social='Otro Tenant',
+            activo=True
+        )
+        db.session.add(other_receptor)
+        db.session.commit()
+
+        response = client.put(
+            f'/api/receptores/{receptor.id}',
+            headers=auth_headers,
+            json={'doc_nro': '30-44444444-4'}
+        )
+        assert response.status_code == 200
+        assert response.get_json()['doc_nro'] == '30444444444'
 
 
 class TestDeleteReceptor:

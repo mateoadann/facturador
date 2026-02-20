@@ -270,13 +270,10 @@ function Receptores() {
               value={formData.doc_nro}
               onChange={(e) => setFormData({ ...formData, doc_nro: e.target.value })}
               className="flex-1"
-              disabled={!!editingReceptor}
             />
-            {!editingReceptor && (
-              <Button variant="secondary" onClick={handleConsultarCuit}>
-                Buscar
-              </Button>
-            )}
+            <Button variant="secondary" onClick={handleConsultarCuit}>
+              Buscar
+            </Button>
           </div>
 
           <Input

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 import csv
 from ..extensions import db
-from ..models import Receptor, Facturador
+from ..models import Receptor, Facturador, Factura
 from ..services.encryption import decrypt_certificate
 from ..services.receptores_csv_parser import parse_receptores_csv
 from ..utils import permission_required
@@ -121,6 +121,34 @@ def update_receptor(receptor_id):
     if not data:
         return jsonify({'error': 'Datos requeridos'}), 400
 
+    detalle_audit = {}
+
+    if 'doc_nro' in data:
+        doc_nro = (data['doc_nro'] or '').replace('-', '').replace(' ', '')
+        if not doc_nro or not doc_nro.isdigit() or len(doc_nro) != 11:
+            return jsonify({'error': 'CUIT/CUIL inválido'}), 400
+
+        if doc_nro != receptor.doc_nro:
+            existing = Receptor.query.filter(
+                Receptor.tenant_id == g.tenant_id,
+                Receptor.doc_nro == doc_nro,
+                Receptor.id != receptor.id
+            ).first()
+            if existing:
+                return jsonify({'error': 'Ya existe un receptor con ese documento'}), 400
+
+            has_autorizadas = Factura.query.filter(
+                Factura.tenant_id == g.tenant_id,
+                Factura.receptor_id == receptor.id,
+                Factura.estado == 'autorizado'
+            ).first()
+            if has_autorizadas:
+                return jsonify({'error': 'No se puede modificar el CUIT de un receptor con facturas autorizadas'}), 400
+
+            detalle_audit['doc_nro_anterior'] = receptor.doc_nro
+            detalle_audit['doc_nro_nuevo'] = doc_nro
+            receptor.doc_nro = doc_nro
+
     # Campos actualizables
     if 'razon_social' in data:
         receptor.razon_social = data['razon_social']
@@ -133,7 +161,7 @@ def update_receptor(receptor_id):
     if 'activo' in data:
         receptor.activo = data['activo']
 
-    log_action('receptor:editar', recurso='receptor', recurso_id=receptor.id)
+    log_action('receptor:editar', recurso='receptor', recurso_id=receptor.id, detalle=detalle_audit or None)
     db.session.commit()
 
     return jsonify(receptor.to_dict()), 200
