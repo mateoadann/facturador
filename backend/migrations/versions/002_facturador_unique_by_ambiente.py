@@ -6,6 +6,7 @@ Create Date: 2026-02-09
 """
 
 from alembic import op
+from migrations.helpers import constraint_exists
 
 
 revision = '002_fact_ambiente'
@@ -15,18 +16,22 @@ depends_on = None
 
 
 def upgrade():
-    op.drop_constraint('unique_tenant_cuit_pv', 'facturador', type_='unique')
-    op.create_unique_constraint(
-        'unique_tenant_cuit_pv_ambiente',
-        'facturador',
-        ['tenant_id', 'cuit', 'punto_venta', 'ambiente']
-    )
+    if constraint_exists('facturador', 'unique_tenant_cuit_pv'):
+        op.drop_constraint('unique_tenant_cuit_pv', 'facturador', type_='unique')
+    if not constraint_exists('facturador', 'unique_tenant_cuit_pv_ambiente'):
+        op.create_unique_constraint(
+            'unique_tenant_cuit_pv_ambiente',
+            'facturador',
+            ['tenant_id', 'cuit', 'punto_venta', 'ambiente']
+        )
 
 
 def downgrade():
-    op.drop_constraint('unique_tenant_cuit_pv_ambiente', 'facturador', type_='unique')
-    op.create_unique_constraint(
-        'unique_tenant_cuit_pv',
-        'facturador',
-        ['tenant_id', 'cuit', 'punto_venta']
-    )
+    if constraint_exists('facturador', 'unique_tenant_cuit_pv_ambiente'):
+        op.drop_constraint('unique_tenant_cuit_pv_ambiente', 'facturador', type_='unique')
+    if not constraint_exists('facturador', 'unique_tenant_cuit_pv'):
+        op.create_unique_constraint(
+            'unique_tenant_cuit_pv',
+            'facturador',
+            ['tenant_id', 'cuit', 'punto_venta']
+        )

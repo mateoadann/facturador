@@ -7,6 +7,7 @@ Create Date: 2026-02-09
 
 from alembic import op
 import sqlalchemy as sa
+from migrations.helpers import column_exists, fk_exists
 
 
 revision = '003_lote_fact_ref'
@@ -16,14 +17,17 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('lote', sa.Column('facturador_id', sa.UUID(), nullable=True))
-    op.create_foreign_key(
-        'fk_lote_facturador_id',
-        'lote',
-        'facturador',
-        ['facturador_id'],
-        ['id']
-    )
+    if not column_exists('lote', 'facturador_id'):
+        op.add_column('lote', sa.Column('facturador_id', sa.UUID(), nullable=True))
+
+    if not fk_exists('lote', 'fk_lote_facturador_id'):
+        op.create_foreign_key(
+            'fk_lote_facturador_id',
+            'lote',
+            'facturador',
+            ['facturador_id'],
+            ['id']
+        )
 
     op.execute(
         """
@@ -36,11 +40,13 @@ def upgrade():
             GROUP BY lote_id
             HAVING COUNT(DISTINCT facturador_id) = 1
         ) s
-        WHERE l.id = s.lote_id
+        WHERE l.id = s.lote_id AND l.facturador_id IS NULL
         """
     )
 
 
 def downgrade():
-    op.drop_constraint('fk_lote_facturador_id', 'lote', type_='foreignkey')
-    op.drop_column('lote', 'facturador_id')
+    if fk_exists('lote', 'fk_lote_facturador_id'):
+        op.drop_constraint('fk_lote_facturador_id', 'lote', type_='foreignkey')
+    if column_exists('lote', 'facturador_id'):
+        op.drop_column('lote', 'facturador_id')

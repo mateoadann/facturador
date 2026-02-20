@@ -7,6 +7,7 @@ Create Date: 2026-02-09
 
 from alembic import op
 import sqlalchemy as sa
+from migrations.helpers import column_exists
 
 
 revision = '004_fact_html'
@@ -16,8 +17,10 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('factura', sa.Column('comprobante_html', sa.Text(), nullable=True))
+    if not column_exists('factura', 'comprobante_html'):
+        op.add_column('factura', sa.Column('comprobante_html', sa.Text(), nullable=True))
 
 
 def downgrade():
-    op.drop_column('factura', 'comprobante_html')
+    if column_exists('factura', 'comprobante_html'):
+        op.drop_column('factura', 'comprobante_html')
