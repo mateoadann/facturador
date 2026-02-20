@@ -20,7 +20,7 @@ import { toast } from '@/stores/toastStore'
 
 function Facturas() {
   const [filters, setFilters] = useState({
-    estado: '',
+    estadoVista: 'finalizados',
     facturador_id: '',
     fecha_desde: '',
     fecha_hasta: '',
@@ -32,7 +32,13 @@ function Facturas() {
   const { data, isLoading } = useQuery({
     queryKey: ['facturas', filters],
     queryFn: async () => {
-      const params = { ...filters, per_page: 20 }
+      const { estadoVista, ...rest } = filters
+      const params = { ...rest, per_page: 20 }
+      if (estadoVista === 'finalizados') {
+        params.estados = 'autorizado,error'
+      } else {
+        params.estado = estadoVista
+      }
       Object.keys(params).forEach((key) => {
         if (!params[key]) delete params[key]
       })
@@ -117,15 +123,13 @@ function Facturas() {
       <div className="flex flex-wrap items-end gap-4">
         <Select
           label="Estado"
-          value={filters.estado}
-          onChange={(e) => setFilters({ ...filters, estado: e.target.value, page: 1 })}
+          value={filters.estadoVista}
+          onChange={(e) => setFilters({ ...filters, estadoVista: e.target.value, page: 1 })}
           className="w-40"
         >
-          <option value="">Todos</option>
+          <option value="finalizados">Todos finalizados</option>
           <option value="autorizado">Autorizado</option>
           <option value="error">Error</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="borrador">Borrador</option>
         </Select>
 
         <Select
@@ -160,7 +164,7 @@ function Facturas() {
 
         <Button
           variant="secondary"
-          onClick={() => setFilters({ estado: '', facturador_id: '', fecha_desde: '', fecha_hasta: '', page: 1 })}
+          onClick={() => setFilters({ estadoVista: 'finalizados', facturador_id: '', fecha_desde: '', fecha_hasta: '', page: 1 })}
         >
           Limpiar
         </Button>

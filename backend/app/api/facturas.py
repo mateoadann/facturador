@@ -22,12 +22,24 @@ def list_facturas():
     tipo_comprobante = request.args.get('tipo_comprobante', type=int)
     fecha_desde = request.args.get('fecha_desde')
     fecha_hasta = request.args.get('fecha_hasta')
+    estados = request.args.get('estados')
 
     query = Factura.query.filter_by(tenant_id=g.tenant_id)
+    allowed_estados = {'autorizado', 'error', 'pendiente', 'borrador'}
 
     if lote_id:
         query = query.filter_by(lote_id=lote_id)
-    if estado:
+    if estados:
+        estados_list = [item.strip() for item in estados.split(',') if item.strip()]
+        invalid_states = [item for item in estados_list if item not in allowed_estados]
+        if invalid_states:
+            return jsonify({
+                'error': f"Estados inválidos: {', '.join(invalid_states)}"
+            }), 400
+        query = query.filter(Factura.estado.in_(estados_list))
+    elif estado:
+        if estado not in allowed_estados:
+            return jsonify({'error': f'Estado inválido: {estado}'}), 400
         query = query.filter_by(estado=estado)
     if facturador_id:
         query = query.filter_by(facturador_id=facturador_id)

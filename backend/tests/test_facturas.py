@@ -120,6 +120,35 @@ class TestListFacturas:
         assert response.status_code == 200
         assert len(response.get_json()['items']) == 0
 
+    def test_list_with_multiple_estados_filter(self, client, auth_headers, facturador, receptor):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+
+        data = {
+            'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+            'etiqueta': 'Test estados multiple',
+            'tipo': 'factura'
+        }
+        client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data=data,
+            content_type='multipart/form-data'
+        )
+
+        response = client.get('/api/facturas?estados=pendiente,borrador', headers=auth_headers)
+        assert response.status_code == 200
+        assert len(response.get_json()['items']) == 1
+
+        response = client.get('/api/facturas?estados=autorizado,error', headers=auth_headers)
+        assert response.status_code == 200
+        assert len(response.get_json()['items']) == 0
+
+    def test_list_with_invalid_estados_filter(self, client, auth_headers):
+        response = client.get('/api/facturas?estados=autorizado,invalido', headers=auth_headers)
+        assert response.status_code == 400
+        assert 'Estados inválidos' in response.get_json()['error']
+
 
 class TestBulkDeleteFacturas:
     def test_bulk_delete(self, client, auth_headers, facturador, receptor):

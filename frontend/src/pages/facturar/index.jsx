@@ -44,7 +44,10 @@ function Facturar() {
   const { data: facturasData, isLoading: isLoadingFacturas } = useQuery({
     queryKey: ['facturas', { lote_id: selectedLote }],
     queryFn: async () => {
-      const response = await api.facturas.list({ lote_id: selectedLote })
+      const response = await api.facturas.list({
+        lote_id: selectedLote,
+        estados: 'pendiente,borrador',
+      })
       return response.data
     },
     enabled: !!selectedLote,
