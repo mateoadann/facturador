@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import {
   Button,
   Badge,
+  ErrorBadgeInfo,
   Input,
   Select,
   Table,
@@ -51,16 +52,23 @@ function Facturas() {
   const facturas = data?.items || []
   const facturadores = facturadoresData?.items || []
 
-  const getEstadoBadge = (estado) => {
+  const getEstadoBadge = (estado, factura) => {
+    if (estado === 'error') {
+      return (
+        <ErrorBadgeInfo
+          errorCodigo={factura?.error_codigo}
+          errorMensaje={factura?.error_mensaje}
+        />
+      )
+    }
+
     const variants = {
       autorizado: 'success',
-      error: 'error',
       pendiente: 'warning',
       borrador: 'default',
     }
     const labels = {
       autorizado: 'Autorizado',
-      error: 'Error',
       pendiente: 'Pendiente',
       borrador: 'Borrador',
     }
@@ -234,7 +242,7 @@ function Facturas() {
                       <span className="text-text-muted">-</span>
                     )}
                   </TableCell>
-                  <TableCell>{getEstadoBadge(factura.estado)}</TableCell>
+                  <TableCell>{getEstadoBadge(factura.estado, factura)}</TableCell>
                   <TableCell>
                     {factura.estado === 'autorizado' ? (
                       factura.email_enviado ? (
