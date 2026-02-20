@@ -190,12 +190,12 @@ function Email() {
             <Checkbox
               label="Usar TLS"
               checked={formData.smtp_use_tls}
-              onChange={(e) => setFormData({ ...formData, smtp_use_tls: e.target.checked })}
+              onChange={(checked) => setFormData({ ...formData, smtp_use_tls: checked })}
             />
             <Checkbox
               label="Email habilitado"
               checked={formData.email_habilitado}
-              onChange={(e) => setFormData({ ...formData, email_habilitado: e.target.checked })}
+              onChange={(checked) => setFormData({ ...formData, email_habilitado: checked })}
             />
           </div>
 
