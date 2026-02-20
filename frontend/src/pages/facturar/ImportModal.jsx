@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Upload, FileText, Download } from 'lucide-react'
+import { Upload, FileText, Download, ChevronDown } from 'lucide-react'
 import { api } from '@/api/client'
 import { Button, Input, Modal } from '@/components/ui'
 import { toast } from '@/stores/toastStore'
@@ -11,6 +11,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [etiqueta, setEtiqueta] = useState('')
   const [errors, setErrors] = useState([])
+  const [isTemplateOpen, setIsTemplateOpen] = useState(false)
 
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -41,6 +42,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
     setFile(null)
     setEtiqueta('')
     setErrors([])
+    setIsTemplateOpen(false)
     onClose()
   }
 
@@ -86,17 +88,26 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
       <div className="space-y-6">
         {/* Step 0: Download template */}
         <div>
-          <h3 className="mb-3 text-sm font-medium text-text-primary">
-            0. Descargar template XLSX
-          </h3>
-          <div className="rounded-md bg-secondary/50 p-4">
-            <p className="mb-3 text-sm text-text-secondary">
-              Descargá el archivo base con todas las columnas disponibles para completar tus facturas.
-            </p>
-            <Button variant="secondary" icon={Download} onClick={handleDownloadTemplate}>
-              Descargar template .xlsx
-            </Button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsTemplateOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-left text-sm font-medium text-text-primary hover:bg-secondary/50"
+          >
+            <span>0. Descargar template XLSX</span>
+            <ChevronDown
+              className={`h-4 w-4 text-text-secondary transition-transform ${isTemplateOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {isTemplateOpen && (
+            <div className="mt-3 rounded-md bg-secondary/50 p-4">
+              <p className="mb-3 text-sm text-text-secondary">
+                Descargá el archivo base con todas las columnas disponibles para completar tus facturas.
+              </p>
+              <Button variant="secondary" icon={Download} onClick={handleDownloadTemplate}>
+                Descargar template .xlsx
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Step 1: Select file */}
@@ -171,14 +182,13 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
             <p className="mb-2 font-medium text-error-foreground">
               Errores encontrados:
             </p>
-            <ul className="list-inside list-disc space-y-1 text-sm text-error-foreground">
-              {errors.slice(0, 5).map((error, i) => (
-                <li key={i}>{error}</li>
-              ))}
-              {errors.length > 5 && (
-                <li>... y {errors.length - 5} errores más</li>
-              )}
-            </ul>
+            <div className="max-h-56 overflow-y-auto pr-1">
+              <ul className="list-inside list-disc space-y-1 text-sm text-error-foreground">
+                {errors.map((error, i) => (
+                  <li key={i}>{error}</li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>

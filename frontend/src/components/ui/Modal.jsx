@@ -27,7 +27,7 @@ function Modal({ isOpen, onClose, title, children, className, footer }) {
       {/* Modal */}
       <div
         className={cn(
-          'relative z-10 w-full max-w-md overflow-hidden rounded-lg bg-card shadow-xl',
+          'relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-lg bg-card shadow-xl',
           className
         )}
       >
@@ -43,7 +43,7 @@ function Modal({ isOpen, onClose, title, children, className, footer }) {
         </div>
 
         {/* Body */}
-        <div className="p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
 
         {/* Footer */}
         {footer && (
