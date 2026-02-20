@@ -102,6 +102,10 @@ export const api = {
     create: (data) => client.post('/receptores', data),
     update: (id, data) => client.put(`/receptores/${id}`, data),
     delete: (id) => client.delete(`/receptores/${id}`),
+    import: (formData) =>
+      client.post('/receptores/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
     consultarCuit: (cuit) => client.post('/receptores/consultar-cuit', { cuit }),
   },
 

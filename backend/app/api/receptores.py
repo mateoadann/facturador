@@ -1,7 +1,9 @@
 from flask import Blueprint, request, jsonify, g
+import csv
 from ..extensions import db
 from ..models import Receptor, Facturador
 from ..services.encryption import decrypt_certificate
+from ..services.receptores_csv_parser import parse_receptores_csv
 from ..utils import permission_required
 from ..services.audit import log_action
 
@@ -156,6 +158,85 @@ def delete_receptor(receptor_id):
     db.session.commit()
 
     return jsonify({'message': 'Receptor desactivado'}), 200
+
+
+@receptores_bp.route('/import', methods=['POST'])
+@permission_required('receptores:crear')
+def import_receptores():
+    """Importar receptores desde CSV con upsert por CUIT."""
+    if 'file' not in request.files:
+        return jsonify({'error': 'Archivo CSV requerido'}), 400
+
+    file = request.files['file']
+    try:
+        rows, errors = parse_receptores_csv(file.read())
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except csv.Error as exc:
+        return jsonify({'error': f'Error al parsear CSV: {str(exc)}'}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Error inesperado al importar receptores: {str(exc)}'}), 500
+
+    if not rows:
+        return jsonify({'error': 'El archivo no contiene filas válidas', 'errores': errors}), 400
+
+    cuit_set = {row['doc_nro'] for row in rows}
+    existing = Receptor.query.filter(
+        Receptor.tenant_id == g.tenant_id,
+        Receptor.doc_nro.in_(cuit_set)
+    ).all()
+    existing_by_doc = {r.doc_nro: r for r in existing}
+
+    creados = 0
+    actualizados = 0
+
+    for row in rows:
+        receptor = existing_by_doc.get(row['doc_nro'])
+        if receptor:
+            receptor.razon_social = row['razon_social']
+            receptor.condicion_iva = row['condicion_iva']
+            receptor.email = row['email']
+            receptor.direccion = row['direccion']
+            receptor.activo = True
+            actualizados += 1
+        else:
+            receptor = Receptor(
+                tenant_id=g.tenant_id,
+                doc_tipo=row['doc_tipo'],
+                doc_nro=row['doc_nro'],
+                razon_social=row['razon_social'],
+                condicion_iva=row['condicion_iva'],
+                email=row['email'],
+                direccion=row['direccion'],
+                activo=True
+            )
+            db.session.add(receptor)
+            existing_by_doc[row['doc_nro']] = receptor
+            creados += 1
+
+    procesados = len(rows) + len(errors)
+    omitidos = len(errors)
+
+    db.session.flush()
+    log_action(
+        'receptor:importar',
+        recurso='receptor',
+        detalle={
+            'procesados': procesados,
+            'creados': creados,
+            'actualizados': actualizados,
+            'omitidos': omitidos
+        }
+    )
+    db.session.commit()
+
+    return jsonify({
+        'procesados': procesados,
+        'creados': creados,
+        'actualizados': actualizados,
+        'omitidos': omitidos,
+        'errores': errors
+    }), 200
 
 
 @receptores_bp.route('/consultar-cuit', methods=['POST'])

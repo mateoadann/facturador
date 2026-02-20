@@ -29,6 +29,7 @@ const accionVariants = {
   'receptor:crear': 'success',
   'receptor:editar': 'warning',
   'receptor:eliminar': 'error',
+  'receptor:importar': 'success',
   'lote:importar': 'success',
   'lote:facturar': 'primary',
   'lote:eliminar': 'error',

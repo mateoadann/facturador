@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, Search } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Upload } from 'lucide-react'
 import { api } from '@/api/client'
 import {
   Button,
@@ -17,11 +17,13 @@ import {
 } from '@/components/ui'
 import { formatCUIT } from '@/lib/utils'
 import { toast } from '@/stores/toastStore'
+import ImportModal from './ImportModal'
 
 function Receptores() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingReceptor, setEditingReceptor] = useState(null)
   const [formData, setFormData] = useState({
     doc_tipo: 80,
@@ -115,6 +117,10 @@ function Receptores() {
     }
   }
 
+  const handleImportSuccess = () => {
+    queryClient.invalidateQueries(['receptores'])
+  }
+
   const handleConsultarCuit = async () => {
     if (!formData.doc_nro) return
 
@@ -148,9 +154,14 @@ function Receptores() {
             className="h-10 w-full rounded-md border border-border bg-card pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
-        <Button icon={Plus} onClick={() => handleOpenModal()}>
-          Nuevo Receptor
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="secondary" icon={Upload} onClick={() => setIsImportModalOpen(true)}>
+            Importar CSV
+          </Button>
+          <Button icon={Plus} onClick={() => handleOpenModal()}>
+            Nuevo Receptor
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -310,6 +321,12 @@ function Receptores() {
           )}
         </div>
       </Modal>
+
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={handleImportSuccess}
+      />
     </div>
   )
 }
