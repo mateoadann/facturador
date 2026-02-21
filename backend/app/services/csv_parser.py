@@ -202,6 +202,11 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
             'alicuota_iva_id': parse_int(row.get('item_alicuota_iva_id', '5'), 'item_alicuota_iva_id')
         }]
 
+    fecha_emision = factura['fecha_emision']
+    factura['fecha_desde'] = factura.get('fecha_desde') or fecha_emision
+    factura['fecha_hasta'] = factura.get('fecha_hasta') or fecha_emision
+    factura['fecha_vto_pago'] = factura.get('fecha_vto_pago') or fecha_emision
+
     return factura
 
 

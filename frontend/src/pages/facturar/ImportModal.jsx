@@ -33,8 +33,11 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
       }
     },
     onError: (error) => {
-      setErrors([error.response?.data?.error || 'Error al importar'])
-      toast.error('Error al importar', error.response?.data?.error || 'No se pudo importar el CSV')
+      const apiError = error.response?.data?.error || 'No se pudo importar el CSV'
+      const apiDetails = error.response?.data?.details
+      const detailList = Array.isArray(apiDetails) ? apiDetails : []
+      setErrors(detailList.length > 0 ? detailList : [apiError])
+      toast.error('Error al importar', apiError)
     },
   })
 

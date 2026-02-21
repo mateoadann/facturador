@@ -107,6 +107,72 @@ class TestParseCSV:
         assert facturas[0]['cbte_asoc_pto_vta'] == 1
         assert facturas[0]['cbte_asoc_nro'] == 100
 
+    def test_parse_csv_concepto_2_defaults_service_dates_to_emision(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+20123456789,30111111111,1,2,2026-01-20,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
+
+    def test_parse_csv_concepto_3_defaults_service_dates_to_emision(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+20123456789,30111111111,1,3,2026-01-20,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
+
+    def test_parse_csv_concepto_2_with_service_dates(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,fecha_hasta,fecha_vto_pago,importe_total,importe_neto
+20123456789,30111111111,1,2,2026-01-20,2026-01-01,2026-01-31,2026-02-10,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 1)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 31)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 2, 10)
+
+    def test_parse_csv_concepto_1_defaults_service_dates_to_emision(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+20123456789,30111111111,1,1,2026-01-20,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
+
+    def test_parse_csv_concepto_1_defaults_only_missing_service_dates(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto
+20123456789,30111111111,1,1,2026-01-20,2026-01-15,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 15)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
+
+    def test_parse_csv_concepto_2_defaults_only_missing_service_dates(self):
+        csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto
+20123456789,30111111111,1,2,2026-01-20,2026-01-10,5000.00,4132.23"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert facturas[0]['fecha_desde'] == date(2026, 1, 10)
+        assert facturas[0]['fecha_hasta'] == date(2026, 1, 20)
+        assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
+
     def test_parse_empty_csv(self):
         csv_content = """facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto"""
 
