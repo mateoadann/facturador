@@ -17,10 +17,17 @@ def list_lotes():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     estado = request.args.get('estado')
+    para_facturar = request.args.get('para_facturar', 'false').lower() == 'true'
 
     query = Lote.query.filter_by(tenant_id=g.tenant_id)
 
-    if estado:
+    if para_facturar:
+        retryable_lote_ids = db.session.query(Factura.lote_id).filter(
+            Factura.tenant_id == g.tenant_id,
+            Factura.estado.in_(['pendiente', 'error']),
+        ).distinct()
+        query = query.filter(Lote.id.in_(retryable_lote_ids))
+    elif estado:
         query = query.filter_by(estado=estado)
 
     pagination = query.order_by(Lote.created_at.desc()).paginate(
@@ -105,15 +112,35 @@ def facturar_lote(lote_id):
     if lote.estado == 'procesando':
         return jsonify({'error': 'El lote ya está siendo procesado'}), 400
 
-    # Verificar que hay facturas pendientes
+    # Verificar que hay facturas reintentables
+    facturas_reintentables = Factura.query.filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.lote_id == lote_id,
+        Factura.estado.in_(['pendiente', 'error'])
+    ).count()
+
+    if facturas_reintentables == 0:
+        return jsonify({'error': 'No hay facturas pendientes o con error en este lote'}), 400
+
+    # Resetear facturas en error para permitir reintento
+    Factura.query.filter_by(
+        tenant_id=g.tenant_id,
+        lote_id=lote_id,
+        estado='error'
+    ).update(
+        {
+            Factura.estado: 'pendiente',
+            Factura.error_codigo: None,
+            Factura.error_mensaje: None,
+        },
+        synchronize_session=False,
+    )
+
     facturas_pendientes = Factura.query.filter_by(
         tenant_id=g.tenant_id,
         lote_id=lote_id,
         estado='pendiente'
     ).count()
-
-    if facturas_pendientes == 0:
-        return jsonify({'error': 'No hay facturas pendientes en este lote'}), 400
 
     requested_facturador_id = data.get('facturador_id')
 

@@ -1,7 +1,6 @@
 import io
 from uuid import UUID
-import pytest
-from app.models import Factura, Facturador
+from app.models import Factura, Facturador, Lote
 
 
 class TestListLotes:
@@ -32,6 +31,64 @@ class TestListLotes:
         assert len(items) == 1
         assert items[0]['etiqueta'] == 'Lote Test'
         assert items[0]['total_facturas'] == 1
+
+    def test_list_lotes_para_facturar_includes_completed_with_error(self, client, auth_headers, facturador, receptor, db):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote reintento visible',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = UUID(import_response.get_json()['lote']['id'])
+
+        lote = Lote.query.filter_by(id=lote_id).first()
+        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        lote.estado = 'completado'
+        factura.estado = 'error'
+        factura.error_codigo = '100'
+        factura.error_mensaje = 'Error de prueba'
+        db.session.commit()
+
+        response = client.get('/api/lotes?para_facturar=true', headers=auth_headers)
+        assert response.status_code == 200
+        ids = [item['id'] for item in response.get_json()['items']]
+        assert str(lote_id) in ids
+
+    def test_list_lotes_para_facturar_excludes_completed_without_retryables(self, client, auth_headers, facturador, receptor, db):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote no reintetable',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = UUID(import_response.get_json()['lote']['id'])
+
+        lote = Lote.query.filter_by(id=lote_id).first()
+        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        lote.estado = 'completado'
+        factura.estado = 'autorizado'
+        db.session.commit()
+
+        response = client.get('/api/lotes?para_facturar=true', headers=auth_headers)
+        assert response.status_code == 200
+        ids = [item['id'] for item in response.get_json()['items']]
+        assert str(lote_id) not in ids
 
 
 class TestGetLote:
@@ -180,3 +237,92 @@ class TestFacturarLote:
         )
         assert response.status_code == 400
         assert 'no tiene certificados' in response.get_json()['error'].lower()
+
+    def test_facturar_lote_retries_error_facturas_by_resetting_to_pending(self, client, auth_headers, facturador, receptor, db, monkeypatch):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote reintento',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = UUID(import_response.get_json()['lote']['id'])
+
+        lote = Lote.query.filter_by(id=lote_id).first()
+        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        lote.estado = 'completado'
+        factura.estado = 'error'
+        factura.error_codigo = 'E01'
+        factura.error_mensaje = 'Error ARCA'
+        db.session.commit()
+
+        facturador_con_cert = Facturador(
+            tenant_id=facturador.tenant_id,
+            cuit='20333444558',
+            razon_social='Facturador Reintento',
+            punto_venta=11,
+            ambiente='testing',
+            activo=True,
+            cert_encrypted=b'cert',
+            key_encrypted=b'key',
+        )
+        db.session.add(facturador_con_cert)
+        db.session.commit()
+
+        class _Task:
+            id = 'task-test-retry'
+
+        def _fake_delay(*_args, **_kwargs):
+            return _Task()
+
+        monkeypatch.setattr('app.tasks.facturacion.procesar_lote.delay', _fake_delay)
+
+        response = client.post(
+            f'/api/lotes/{lote_id}/facturar',
+            headers=auth_headers,
+            json={'facturador_id': str(facturador_con_cert.id)}
+        )
+        assert response.status_code == 202
+
+        db.session.refresh(factura)
+        assert factura.estado == 'pendiente'
+        assert factura.error_codigo is None
+        assert factura.error_mensaje is None
+
+    def test_facturar_lote_returns_400_when_only_autorizadas(self, client, auth_headers, facturador, receptor, db):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote autorizado',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = UUID(import_response.get_json()['lote']['id'])
+
+        lote = Lote.query.filter_by(id=lote_id).first()
+        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        lote.estado = 'completado'
+        factura.estado = 'autorizado'
+        db.session.commit()
+
+        response = client.post(
+            f'/api/lotes/{lote_id}/facturar',
+            headers=auth_headers,
+            json={'facturador_id': str(facturador.id)}
+        )
+        assert response.status_code == 400
+        assert 'no hay facturas pendientes o con error' in response.get_json()['error'].lower()

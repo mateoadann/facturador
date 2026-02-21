@@ -54,7 +54,10 @@ function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
 
   const selectedLoteData = lotes.find((l) => l.id === loteId)
   const selectedFacturador = facturadoresDisponibles.find((f) => f.id === facturadorId)
-  const pendientes = selectedLoteData?.total_facturas - (selectedLoteData?.facturas_ok || 0) - (selectedLoteData?.facturas_error || 0)
+  const pendientes = Math.max(
+    (selectedLoteData?.total_facturas || 0) - (selectedLoteData?.facturas_ok || 0),
+    0
+  )
 
   useEffect(() => {
     if (!isOpen) return

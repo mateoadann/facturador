@@ -33,9 +33,9 @@ function Facturar() {
 
   // Fetch lotes
   const { data: lotesData } = useQuery({
-    queryKey: ['lotes', { estado: 'pendiente' }],
+    queryKey: ['lotes', { para_facturar: true }],
     queryFn: async () => {
-      const response = await api.lotes.list({ estado: 'pendiente' })
+      const response = await api.lotes.list({ para_facturar: true })
       return response.data
     },
   })
@@ -96,6 +96,7 @@ function Facturar() {
     if (estado === 'error') {
       return (
         <ErrorBadgeInfo
+          floating
           errorCodigo={factura?.error_codigo}
           errorMensaje={factura?.error_mensaje}
         />
