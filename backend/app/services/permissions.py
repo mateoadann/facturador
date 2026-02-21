@@ -8,6 +8,7 @@ PERMISSIONS = {
     'facturar:importar': 'Importar CSV de facturas',
     'facturar:ejecutar': 'Ejecutar facturacion masiva',
     'facturas:ver': 'Ver listado de facturas',
+    'facturas:editar': 'Editar facturas no autorizadas',
     'facturas:eliminar': 'Eliminar facturas pendientes',
     'facturas:comprobante': 'Ver/descargar comprobantes',
 
@@ -48,6 +49,7 @@ ROLE_PERMISSIONS = {
         'facturar:importar',
         'facturar:ejecutar',
         'facturas:ver',
+        'facturas:editar',
         'facturas:eliminar',
         'facturas:comprobante',
         'facturadores:ver',

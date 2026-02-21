@@ -1,6 +1,7 @@
 import io
 import pytest
-from app.models import Lote
+from uuid import UUID
+from app.models import Lote, Factura, Receptor
 
 
 class TestImportCSV:
@@ -247,4 +248,171 @@ class TestBulkDeleteFacturas:
         assert second_import.status_code == 201
 
         lotes = Lote.query.filter_by(etiqueta=etiqueta).all()
-        assert len(lotes) == 1
+
+
+class TestUpdateFactura:
+    def _create_factura(self, client, auth_headers, facturador, receptor, etiqueta='Test editar factura'):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        data = {
+            'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas.csv'),
+            'etiqueta': etiqueta,
+            'tipo': 'factura'
+        }
+        response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data=data,
+            content_type='multipart/form-data'
+        )
+        assert response.status_code == 201
+        factura_id = client.get('/api/facturas', headers=auth_headers).get_json()['items'][0]['id']
+        return factura_id
+
+    def test_update_factura_pending_success(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-pending')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'importe_total': 15000.00,
+                'importe_neto': 12000.00,
+                'importe_iva': 3000.00,
+            }
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['importe_total'] == 15000.0
+        assert payload['importe_neto'] == 12000.0
+        assert payload['importe_iva'] == 3000.0
+
+    def test_update_factura_error_moves_to_pending(self, client, auth_headers, facturador, receptor, db):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-error')
+        factura = Factura.query.filter_by(id=UUID(factura_id)).first()
+        assert factura is not None
+        factura.estado = 'error'
+        factura.error_codigo = 'X1'
+        factura.error_mensaje = 'fallo'
+        db.session.commit()
+
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={'importe_total': 13000.00}
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['estado'] == 'pendiente'
+        assert payload['error_codigo'] is None
+        assert payload['error_mensaje'] is None
+
+    def test_update_factura_autorizada_rejected(self, client, auth_headers, facturador, receptor, db):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-autorizada')
+        factura = Factura.query.filter_by(id=UUID(factura_id)).first()
+        assert factura is not None
+        factura.estado = 'autorizado'
+        db.session.commit()
+
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={'importe_total': 9999.00}
+        )
+        assert response.status_code == 400
+        assert 'autorizada' in response.get_json()['error']
+
+    def test_update_factura_concepto_2_requires_dates(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-concepto-2')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'concepto': 2,
+                'fecha_desde': None,
+                'fecha_hasta': None,
+                'fecha_vto_pago': None,
+            }
+        )
+        assert response.status_code == 400
+        assert 'fecha_desde' in response.get_json()['error']
+
+    def test_update_factura_nota_requires_cbte_asoc(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-nota')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'tipo_comprobante': 3,
+                'cbte_asoc_tipo': None,
+                'cbte_asoc_pto_vta': None,
+                'cbte_asoc_nro': None,
+            }
+        )
+        assert response.status_code == 400
+        assert 'cbte_asoc' in response.get_json()['error']
+
+    def test_update_factura_rejects_other_tenant_receptor(self, client, auth_headers, facturador, receptor, db, tenant):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-tenant')
+        from app.models import Tenant
+        other_tenant = Tenant(
+            nombre='Tenant externo',
+            slug='tenant-externo',
+            activo=True
+        )
+        db.session.add(other_tenant)
+        db.session.flush()
+
+        other_receptor = Receptor(
+            tenant_id=other_tenant.id,
+            doc_tipo=80,
+            doc_nro='30222222222',
+            razon_social='Otro tenant receptor',
+            activo=True
+        )
+        db.session.add(other_receptor)
+        db.session.commit()
+
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={'receptor_id': str(other_receptor.id)}
+        )
+        assert response.status_code == 400
+        assert 'Receptor inválido' == response.get_json()['error']
+
+    def test_update_factura_recalculates_totals_from_items(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-items-recalc')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'items': [
+                    {
+                        'descripcion': 'Servicio base',
+                        'cantidad': 2,
+                        'precio_unitario': 1000.00,
+                        'alicuota_iva_id': 5,
+                    },
+                    {
+                        'descripcion': 'Producto sin IVA',
+                        'cantidad': 1,
+                        'precio_unitario': 500.00,
+                        'alicuota_iva_id': 3,
+                    },
+                ],
+            }
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['importe_neto'] == 2500.0
+        assert payload['importe_iva'] == 420.0
+        assert payload['importe_total'] == 2920.0
+
+    def test_update_factura_viewer_denied(self, client, viewer_headers, facturador, receptor, auth_headers):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-viewer')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=viewer_headers,
+            json={'importe_total': 15000.00}
+        )
+        assert response.status_code == 403

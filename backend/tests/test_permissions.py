@@ -13,6 +13,7 @@ class TestPermissions:
         assert has_permission('operator', 'facturar:importar')
         assert has_permission('operator', 'facturar:ejecutar')
         assert has_permission('operator', 'facturas:ver')
+        assert has_permission('operator', 'facturas:editar')
 
     def test_operator_cannot_manage_users(self):
         assert not has_permission('operator', 'usuarios:ver')

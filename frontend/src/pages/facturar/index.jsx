@@ -46,7 +46,7 @@ function Facturar() {
     queryFn: async () => {
       const response = await api.facturas.list({
         lote_id: selectedLote,
-        estados: 'pendiente,borrador',
+        estados: 'pendiente,borrador,error',
       })
       return response.data
     },
@@ -317,6 +317,11 @@ function Facturar() {
       <ItemsModal
         factura={itemsFactura}
         onClose={() => setItemsFactura(null)}
+        onSaved={() => {
+          setItemsFactura(null)
+          queryClient.invalidateQueries(['facturas'])
+          queryClient.invalidateQueries(['lotes'])
+        }}
       />
     </div>
   )

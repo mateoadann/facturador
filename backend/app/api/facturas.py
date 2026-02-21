@@ -1,8 +1,11 @@
 from flask import Blueprint, request, jsonify, g, current_app, make_response
 from uuid import UUID
+from datetime import datetime, date
+from decimal import Decimal, InvalidOperation
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
 from ..services.csv_parser import parse_csv
+from arca_integration.constants import ALICUOTAS_IVA
 from ..utils import permission_required
 from ..services.audit import log_action
 
@@ -95,6 +98,71 @@ def get_factura_items(factura_id):
     return jsonify({
         'items': [item.to_dict() for item in factura.items]
     }), 200
+
+
+@facturas_bp.route('/<uuid:factura_id>', methods=['PUT'])
+@permission_required('facturas:editar')
+def update_factura(factura_id):
+    factura = Factura.query.filter_by(
+        id=factura_id,
+        tenant_id=g.tenant_id
+    ).first()
+
+    if not factura:
+        return jsonify({'error': 'Factura no encontrada'}), 404
+
+    if factura.estado == 'autorizado':
+        return jsonify({'error': 'No se puede editar una factura autorizada'}), 400
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Datos requeridos'}), 400
+
+    try:
+        parsed = _parse_factura_update_payload(data, factura, g.tenant_id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    previous_estado = factura.estado
+
+    for field, value in parsed.items():
+        if field == 'items':
+            continue
+        setattr(factura, field, value)
+
+    items_updated = 'items' in parsed
+    if items_updated:
+        FacturaItem.query.filter_by(factura_id=factura.id).delete()
+        for idx, item_data in enumerate(parsed['items']):
+            item = FacturaItem(
+                factura_id=factura.id,
+                descripcion=item_data['descripcion'],
+                cantidad=item_data['cantidad'],
+                precio_unitario=item_data['precio_unitario'],
+                alicuota_iva_id=item_data['alicuota_iva_id'],
+                importe_iva=item_data['importe_iva'],
+                subtotal=item_data['subtotal'],
+                orden=idx
+            )
+            db.session.add(item)
+
+    if previous_estado == 'error':
+        factura.estado = 'pendiente'
+        factura.error_codigo = None
+        factura.error_mensaje = None
+
+    log_action(
+        'facturas:editar',
+        recurso='factura',
+        recurso_id=factura.id,
+        detalle={
+            'estado_anterior': previous_estado,
+            'items_editados': items_updated,
+        }
+    )
+    db.session.commit()
+
+    return jsonify(factura.to_dict(include_items=True)), 200
 
 
 @facturas_bp.route('/<uuid:factura_id>/comprobante-html', methods=['GET'])
@@ -352,6 +420,178 @@ def _get_or_render_comprobante_html(factura: Factura, force: bool = False) -> st
     factura.comprobante_html = render_comprobante_html(factura)
     db.session.commit()
     return factura.comprobante_html
+
+
+def _parse_factura_update_payload(data: dict, factura: Factura, tenant_id: str) -> dict:
+    parsed = {}
+
+    allowed_simple_int = {'receptor_id', 'tipo_comprobante', 'concepto', 'punto_venta', 'cbte_asoc_tipo', 'cbte_asoc_pto_vta', 'cbte_asoc_nro'}
+    allowed_decimal = {'importe_total', 'importe_neto', 'importe_iva', 'cotizacion'}
+    allowed_date = {'fecha_emision', 'fecha_desde', 'fecha_hasta', 'fecha_vto_pago'}
+    allowed_str = {'moneda'}
+    allowed_items = {'items'}
+    allowed_fields = allowed_simple_int | allowed_decimal | allowed_date | allowed_str | allowed_items
+
+    unknown_fields = set(data.keys()) - allowed_fields
+    if unknown_fields:
+        raise ValueError(f"Campos no permitidos: {', '.join(sorted(unknown_fields))}")
+
+    if 'receptor_id' in data:
+        try:
+            receptor_id = UUID(str(data['receptor_id']))
+        except (TypeError, ValueError):
+            raise ValueError('Receptor inválido')
+
+        receptor = Receptor.query.filter_by(
+            id=receptor_id,
+            tenant_id=tenant_id
+        ).first()
+        if not receptor:
+            raise ValueError('Receptor inválido')
+        parsed['receptor_id'] = receptor.id
+
+    for field in ('tipo_comprobante', 'concepto', 'punto_venta', 'cbte_asoc_tipo', 'cbte_asoc_pto_vta', 'cbte_asoc_nro'):
+        if field in data:
+            value = data.get(field)
+            if value in (None, '') and field.startswith('cbte_asoc_'):
+                parsed[field] = None
+                continue
+            try:
+                parsed[field] = int(value)
+            except (TypeError, ValueError):
+                raise ValueError(f"Campo '{field}' debe ser numérico")
+
+    for field in ('importe_total', 'importe_neto', 'importe_iva', 'cotizacion'):
+        if field in data:
+            value = data.get(field)
+            try:
+                parsed[field] = Decimal(str(value))
+            except (InvalidOperation, TypeError, ValueError):
+                raise ValueError(f"Campo '{field}' debe ser decimal")
+            if parsed[field] < 0:
+                raise ValueError(f"Campo '{field}' debe ser mayor o igual a 0")
+
+    for field in ('fecha_emision', 'fecha_desde', 'fecha_hasta', 'fecha_vto_pago'):
+        if field in data:
+            parsed[field] = _parse_date_or_none(data.get(field), field)
+
+    if 'moneda' in data:
+        moneda = (data.get('moneda') or '').strip()
+        if not moneda:
+            raise ValueError("Campo 'moneda' es requerido")
+        parsed['moneda'] = moneda
+
+    if 'items' in data:
+        parsed['items'] = _parse_items_payload(data['items'])
+        totals = _calculate_totals_from_items(parsed['items'])
+        parsed['importe_neto'] = totals['importe_neto']
+        parsed['importe_iva'] = totals['importe_iva']
+        parsed['importe_total'] = totals['importe_total']
+
+    proposed_tipo = parsed.get('tipo_comprobante', factura.tipo_comprobante)
+    proposed_concepto = parsed.get('concepto', factura.concepto)
+    proposed_fecha_desde = parsed.get('fecha_desde', factura.fecha_desde)
+    proposed_fecha_hasta = parsed.get('fecha_hasta', factura.fecha_hasta)
+    proposed_fecha_vto = parsed.get('fecha_vto_pago', factura.fecha_vto_pago)
+    proposed_total = parsed.get('importe_total', factura.importe_total)
+    proposed_neto = parsed.get('importe_neto', factura.importe_neto)
+
+    if proposed_total < proposed_neto:
+        raise ValueError('importe_total debe ser mayor o igual a importe_neto')
+
+    if proposed_concepto in (2, 3):
+        if not (proposed_fecha_desde and proposed_fecha_hasta and proposed_fecha_vto):
+            raise ValueError('Para concepto 2 o 3 se requieren fecha_desde, fecha_hasta y fecha_vto_pago')
+
+    tipos_nota = {2, 3, 7, 8, 12, 13, 52, 53}
+    if proposed_tipo in tipos_nota:
+        cbte_tipo = parsed.get('cbte_asoc_tipo', factura.cbte_asoc_tipo)
+        cbte_pto = parsed.get('cbte_asoc_pto_vta', factura.cbte_asoc_pto_vta)
+        cbte_nro = parsed.get('cbte_asoc_nro', factura.cbte_asoc_nro)
+        if not (cbte_tipo and cbte_pto and cbte_nro):
+            raise ValueError('Para notas se requiere cbte_asoc_tipo, cbte_asoc_pto_vta y cbte_asoc_nro')
+
+    return parsed
+
+
+def _parse_date_or_none(value, field_name: str):
+    if value in (None, ''):
+        return None
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y'):
+            try:
+                return datetime.strptime(raw, fmt).date()
+            except ValueError:
+                pass
+    raise ValueError(f"Campo '{field_name}' debe tener formato YYYY-MM-DD o DD/MM/YYYY")
+
+
+def _parse_items_payload(items):
+    if not isinstance(items, list):
+        raise ValueError("Campo 'items' debe ser una lista")
+
+    parsed_items = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f'Item {idx + 1} inválido')
+
+        descripcion = (item.get('descripcion') or '').strip()
+        if not descripcion:
+            raise ValueError(f'Item {idx + 1}: descripción requerida')
+
+        try:
+            cantidad = Decimal(str(item.get('cantidad')))
+            precio_unitario = Decimal(str(item.get('precio_unitario')))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError(f'Item {idx + 1}: cantidad y precio_unitario deben ser decimales')
+
+        if cantidad <= 0:
+            raise ValueError(f'Item {idx + 1}: cantidad debe ser mayor a 0')
+        if precio_unitario < 0:
+            raise ValueError(f'Item {idx + 1}: precio_unitario debe ser mayor o igual a 0')
+
+        try:
+            alicuota_iva_id = int(item.get('alicuota_iva_id', 5))
+        except (TypeError, ValueError):
+            raise ValueError(f'Item {idx + 1}: alicuota_iva_id inválida')
+
+        porcentaje = Decimal(str(ALICUOTAS_IVA.get(alicuota_iva_id, {}).get('porcentaje', 21)))
+        subtotal = (cantidad * precio_unitario).quantize(Decimal('0.01'))
+        importe_iva = (subtotal * porcentaje / Decimal('100')).quantize(Decimal('0.01'))
+        parsed_items.append({
+            'descripcion': descripcion,
+            'cantidad': cantidad,
+            'precio_unitario': precio_unitario,
+            'alicuota_iva_id': alicuota_iva_id,
+            'importe_iva': importe_iva,
+            'subtotal': subtotal,
+        })
+
+    return parsed_items
+
+
+def _calculate_totals_from_items(items: list[dict]) -> dict:
+    importe_neto = Decimal('0')
+    importe_iva = Decimal('0')
+
+    for item in items:
+        importe_neto += item['subtotal']
+        importe_iva += item['importe_iva']
+
+    importe_neto = importe_neto.quantize(Decimal('0.01'))
+    importe_iva = importe_iva.quantize(Decimal('0.01'))
+    importe_total = (importe_neto + importe_iva).quantize(Decimal('0.01'))
+
+    return {
+        'importe_neto': importe_neto,
+        'importe_iva': importe_iva,
+        'importe_total': importe_total,
+    }
 
 
 @facturas_bp.route('', methods=['DELETE'])

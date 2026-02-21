@@ -113,6 +113,7 @@ export const api = {
   facturas: {
     list: (params) => client.get('/facturas', { params }),
     get: (id) => client.get(`/facturas/${id}`),
+    update: (id, data) => client.put(`/facturas/${id}`, data),
     getItems: (id) => client.get(`/facturas/${id}/items`),
     getComprobanteHtml: (id, params) => client.get(`/facturas/${id}/comprobante-html`, { params }),
     getComprobantePdf: (id, params) =>
