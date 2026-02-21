@@ -5,6 +5,10 @@ from decimal import Decimal, InvalidOperation
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
 from ..services.csv_parser import parse_csv
+from ..services.comprobante_rules import (
+    es_comprobante_tipo_c,
+    normalizar_importes_para_tipo_c,
+)
 from arca_integration.constants import ALICUOTAS_IVA
 from ..utils import permission_required
 from ..services.audit import log_action
@@ -367,6 +371,13 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
         db.session.add(receptor)
         db.session.flush()
 
+    importe_neto, importe_iva, importe_total = normalizar_importes_para_tipo_c(
+        data['tipo_comprobante'],
+        data['importe_neto'],
+        data.get('importe_iva', 0),
+        data['importe_total'],
+    )
+
     # Crear factura
     factura = Factura(
         tenant_id=tenant_id,
@@ -380,9 +391,9 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
         fecha_desde=data.get('fecha_desde'),
         fecha_hasta=data.get('fecha_hasta'),
         fecha_vto_pago=data.get('fecha_vto_pago'),
-        importe_total=data['importe_total'],
-        importe_neto=data['importe_neto'],
-        importe_iva=data.get('importe_iva', 0),
+        importe_total=importe_total,
+        importe_neto=importe_neto,
+        importe_iva=importe_iva,
         moneda=data.get('moneda', 'PES'),
         cotizacion=data.get('cotizacion', 1),
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
@@ -498,6 +509,19 @@ def _parse_factura_update_payload(data: dict, factura: Factura, tenant_id: str) 
 
     if proposed_total < proposed_neto:
         raise ValueError('importe_total debe ser mayor o igual a importe_neto')
+
+    if es_comprobante_tipo_c(proposed_tipo):
+        neto, iva, total = normalizar_importes_para_tipo_c(
+            proposed_tipo,
+            proposed_neto,
+            parsed.get('importe_iva', factura.importe_iva),
+            proposed_total,
+        )
+        parsed['importe_neto'] = neto
+        parsed['importe_iva'] = iva
+        parsed['importe_total'] = total
+        proposed_total = total
+        proposed_neto = neto
 
     if proposed_concepto in (2, 3):
         if not (proposed_fecha_desde and proposed_fecha_hasta and proposed_fecha_vto):

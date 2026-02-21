@@ -138,3 +138,17 @@ class TestFacturaBuilder:
             .build()
         )
         assert result['FeCAEReq']['FeCabReq']['CbteTipo'] == 1
+
+    def test_build_tipo_c_ignores_iva_detail_and_sets_impiva_zero(self):
+        builder = FacturaBuilder()
+        builder.set_comprobante(tipo=11, punto_venta=1, numero=100, concepto=1)
+        builder.set_fechas(emision=date(2026, 1, 15))
+        builder.set_receptor(doc_tipo=80, doc_nro='30-11111111-1')
+        builder.set_importes(total=10000.00, neto=10000.00, iva=2100.00)
+        builder.add_iva(alicuota_id=5, base_imponible=10000, importe=2100)
+
+        result = builder.build()
+        det = result['FeCAEReq']['FeDetReq']['FECAEDetRequest'][0]
+
+        assert det['ImpIVA'] == 0.0
+        assert 'Iva' not in det

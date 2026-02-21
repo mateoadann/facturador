@@ -88,6 +88,29 @@ class TestImportCSV:
         assert response.status_code == 201
         assert response.get_json()['facturas_importadas'] == 1
 
+    def test_import_tipo_c_normalizes_iva_to_zero(self, client, auth_headers, facturador, receptor):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva
+{facturador.cuit},{receptor.doc_nro},11,1,2026-01-15,12100.00,10000.00,2100.00"""
+
+        data = {
+            'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas-c.csv'),
+            'etiqueta': 'Test Import tipo C',
+            'tipo': 'factura'
+        }
+        response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data=data,
+            content_type='multipart/form-data'
+        )
+        assert response.status_code == 201
+        factura = Factura.query.first()
+        assert factura is not None
+        assert factura.tipo_comprobante == 11
+        assert float(factura.importe_neto) == 10000.0
+        assert float(factura.importe_iva) == 0.0
+        assert float(factura.importe_total) == 10000.0
+
 
 class TestListFacturas:
     def test_list_empty(self, client, auth_headers):
@@ -416,3 +439,46 @@ class TestUpdateFactura:
             json={'importe_total': 15000.00}
         )
         assert response.status_code == 403
+
+    def test_update_factura_tipo_c_normalizes_iva_and_total(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-tipo-c')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'tipo_comprobante': 11,
+                'importe_neto': 10000.00,
+                'importe_iva': 2100.00,
+                'importe_total': 12100.00,
+            }
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['tipo_comprobante'] == 11
+        assert payload['importe_neto'] == 10000.0
+        assert payload['importe_iva'] == 0.0
+        assert payload['importe_total'] == 10000.0
+
+    def test_update_factura_tipo_c_with_items_forces_zero_iva(self, client, auth_headers, facturador, receptor):
+        factura_id = self._create_factura(client, auth_headers, facturador, receptor, etiqueta='editar-tipo-c-items')
+        response = client.put(
+            f'/api/facturas/{factura_id}',
+            headers=auth_headers,
+            json={
+                'tipo_comprobante': 11,
+                'items': [
+                    {
+                        'descripcion': 'Servicio',
+                        'cantidad': 1,
+                        'precio_unitario': 1000.00,
+                        'alicuota_iva_id': 5,
+                    },
+                ],
+            }
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['tipo_comprobante'] == 11
+        assert payload['importe_neto'] == 1000.0
+        assert payload['importe_iva'] == 0.0
+        assert payload['importe_total'] == 1000.0

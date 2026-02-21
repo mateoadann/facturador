@@ -3,6 +3,8 @@ from decimal import Decimal
 from typing import Optional, List
 from ..exceptions import ArcaValidationError
 
+TIPOS_COMPROBANTE_C = {11, 12, 13}
+
 
 class FacturaBuilder:
     """
@@ -213,6 +215,9 @@ class FacturaBuilder:
             'MonCotiz': float(self._cotizacion),
         }
 
+        if tipo_cbte in TIPOS_COMPROBANTE_C:
+            det_request['ImpIVA'] = 0.0
+
         # Fechas de servicio
         if self._fecha_desde:
             det_request['FchServDesde'] = format_date(self._fecha_desde)
@@ -222,7 +227,7 @@ class FacturaBuilder:
             det_request['FchVtoPago'] = format_date(self._fecha_vto_pago)
 
         # Alícuotas de IVA
-        if self._alicuotas_iva:
+        if self._alicuotas_iva and tipo_cbte not in TIPOS_COMPROBANTE_C:
             det_request['Iva'] = {'AlicIva': self._alicuotas_iva}
 
         # Comprobante asociado

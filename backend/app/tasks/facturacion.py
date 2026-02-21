@@ -4,6 +4,10 @@ from time import sleep
 from celery import shared_task
 from ..extensions import db
 from ..models import Lote, Factura, Facturador
+from ..services.comprobante_rules import (
+    es_comprobante_tipo_c,
+    normalizar_importes_para_tipo_c,
+)
 from ..services.encryption import decrypt_certificate
 from arca_integration.constants import ALICUOTAS_IVA, CONDICIONES_IVA
 
@@ -178,11 +182,21 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
             )
 
         builder.set_condicion_iva_receptor(condicion_iva_receptor_id)
+        importe_neto, importe_iva, importe_total = normalizar_importes_para_tipo_c(
+            factura.tipo_comprobante,
+            factura.importe_neto,
+            factura.importe_iva,
+            factura.importe_total,
+        )
+
+        factura.importe_neto = importe_neto
+        factura.importe_iva = importe_iva
+        factura.importe_total = importe_total
 
         builder.set_importes(
-            total=float(factura.importe_total),
-            neto=float(factura.importe_neto),
-            iva=float(factura.importe_iva or 0)
+            total=float(importe_total),
+            neto=float(importe_neto),
+            iva=float(importe_iva),
         )
         builder.set_moneda(
             moneda=factura.moneda,
@@ -198,7 +212,11 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
             )
 
         # Agregar IVA (soporta múltiples alícuotas por item)
-        if factura.importe_iva and float(factura.importe_iva) > 0:
+        if (
+            not es_comprobante_tipo_c(factura.tipo_comprobante)
+            and factura.importe_iva
+            and float(factura.importe_iva) > 0
+        ):
             iva_items = _build_iva_from_items(factura)
 
             if iva_items:
