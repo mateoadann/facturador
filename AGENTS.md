@@ -1,169 +1,131 @@
 # AGENTS.md
-Guide for agentic coding tools working in this repository.
+Code review contract for AI reviewers in this repository.
 
-## Rule files status
-- No `.cursor/rules/` directory was found.
-- No `.cursorrules` file was found.
-- No `.github/copilot-instructions.md` file was found.
-- If any of these files appear later, treat them as highest-priority local instructions.
+## Priority Of Rule Files
+- If `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` exist, treat them as higher priority than this file.
 
-## Project overview
-- Stack: Flask + SQLAlchemy + Celery backend, React + Vite frontend, ARCA integration module.
-- Backend path: `backend/`
-- Frontend path: `frontend/`
-- ARCA module path: `arca_integration/`
-- App is multi-tenant: tenant isolation is mandatory in data access.
+## Project Context
+- Stack: Flask + SQLAlchemy + Celery backend, React + Vite frontend, ARCA integration.
+- Paths: `backend/`, `frontend/`, `arca_integration/`.
+- Domain: multi-tenant invoicing. Tenant isolation is mandatory.
 
-## Build, run, lint, test commands
+## Critical Rules (All Files)
 
-### Root shortcuts (Makefile)
-- `make up` -> start full docker stack.
-- `make up-build` -> start stack with image rebuild.
-- `make migrate` -> run DB migrations.
-- `make seed` -> seed tenant + users (admin, operator, viewer).
-- `make bootstrap` -> up + migrate + seed.
-- `make test-backend` -> run backend tests in container.
-- `make lint-frontend` -> run frontend lint in container.
+REJECT if:
+- A change can leak data across tenants.
+- A write flow skips audit logging when audit should apply.
+- Money/tax arithmetic uses float where `Decimal` should be used.
+- API response keys are changed without a compatibility reason.
+- Errors are swallowed silently or returned with non-actionable messages.
+- Security-sensitive behavior is weakened (auth, permissions, rate limiting).
 
-### Docker compose direct
-- `docker-compose up -d`
-- `docker-compose down`
-- `docker-compose build api worker`
-- `docker-compose logs -f api`
-- `docker-compose logs -f worker`
-- `docker-compose logs -f frontend`
+REQUIRE:
+- Keep changes minimal, focused, and consistent with existing patterns.
+- Preserve backward compatibility unless the task explicitly requires breaking changes.
+- Document non-obvious behavior changes in final output.
 
-### Backend local
-- `cd backend && pip install -r requirements.txt`
-- `cd backend && python run.py`
-- `cd backend && celery -A celery_worker.celery worker --loglevel=info`
-- `cd backend && flask db upgrade`
-- `cd backend && flask db migrate -m "message"`
+PREFER:
+- Small functions, explicit names, and early validation.
 
-### Frontend local
-- `cd frontend && npm install`
-- `cd frontend && npm run dev`
-- `cd frontend && npm run build`
-- `cd frontend && npm run lint`
+## Backend Rules (Flask/Python)
 
-## Test workflows (focus on single test)
-- All backend tests: `cd backend && python -m pytest`
-- One file: `cd backend && python -m pytest tests/test_facturas.py -v`
-- One class: `cd backend && python -m pytest tests/test_facturas.py::TestBulkDeleteFacturas -v`
-- One test: `cd backend && python -m pytest tests/test_facturas.py::TestBulkDeleteFacturas::test_bulk_delete -v`
-- Filter by keyword: `cd backend && python -m pytest -k "test_login" -v`
-- List routes: `docker-compose exec -T api flask routes`
-- Syntax check: `python3 -m py_compile backend/app/api/facturas.py`
+REJECT if:
+- Tenant-owned queries are not filtered by `tenant_id`.
+- Resource endpoints miss `@permission_required('recurso:accion')`.
+- `@tenant_required` is used where `@permission_required` should be used.
+- Write endpoints do not call `log_action()` before commit.
+- Broad `except Exception` is used without translating external/library failures.
+- Old migrations are rewritten without explicit need.
 
-## Note on pytest
-- `pytest` is not pinned in `backend/requirements.txt`.
-- If missing locally: `cd backend && pip install pytest`.
+REQUIRE:
+- Keep endpoint functions thin; move business logic to services/helpers.
+- Return JSON errors with clear message and status code, e.g. `jsonify({'error': '...'}), 400`.
+- Keep imports grouped in order: stdlib, third-party, local.
+- Use Flask-Migrate (`flask db migrate`, `flask db upgrade`) for schema changes.
 
-## Architecture pointers
-- Flask app factory: `backend/app/__init__.py`
-- API blueprints: `backend/app/api/*.py`
-- Models: `backend/app/models/*.py`
-- Permissions and roles: `backend/app/services/permissions.py`
-- Audit logging: `backend/app/services/audit.py`
-- CSV import path: `POST /api/facturas/import`
-- Lote processing task: `backend/app/tasks/facturacion.py`
-- ARCA wrappers: `arca_integration/client.py`, `arca_integration/services/*`
-- Frontend API client: `frontend/src/api/client.js`
-- Frontend permission hooks: `frontend/src/hooks/usePermission.js`
-- Main invoicing screen: `frontend/src/pages/facturar/index.jsx`
+PREFER:
+- Type hints on new/changed helpers and explicit return types where they improve clarity.
+- `Decimal` for accounting paths.
 
-## Backend style guidelines (Python)
-- Follow existing PEP8-like style and 4-space indentation.
-- Keep endpoint functions thin; move logic to services/helpers.
-- Use clear names and small focused functions.
-- Naming conventions:
-  - `snake_case` -> functions, vars, modules.
-  - `PascalCase` -> classes.
-  - `UPPER_SNAKE_CASE` -> constants.
-- Imports order:
-  1) stdlib
-  2) third-party
-  3) local imports
-- Group imports with blank lines between groups.
-- Prefer explicit `Decimal` arithmetic for money and taxes.
-- Avoid float calculations for accounting logic.
-- Add type hints where they improve readability and safety.
-- Prefer explicit return types for new helpers/services.
+## Frontend Rules (React/JS)
 
-## API and error handling conventions
-- Validate request payloads early and return 4xx on invalid input.
-- Return errors as JSON, e.g. `jsonify({'error': '...'}), status_code`.
-- Preserve actionable error messages for operators.
-- Use broad `except Exception` only when translating external library errors.
-- Keep payload key names stable; frontend depends on exact response keys.
+REJECT if:
+- TypeScript is introduced (codebase is JS-only).
+- HTTP calls are added outside `frontend/src/api/client.js` without clear reason.
+- Mutations do not invalidate relevant TanStack Query keys.
+- User-facing failures are not surfaced with `toast.error(...)` where appropriate.
+- New protected pages/actions are added without permission gating.
 
-## Security, permissions, and multi-tenancy rules
-- Always filter tenant-owned entities by `tenant_id`.
-- Use `@permission_required('recurso:accion')` for resource endpoints (replaces `@tenant_required` on most routes).
-- Use `@tenant_required` only for transversal endpoints (jobs, change-password).
-- 3 roles defined in `backend/app/services/permissions.py`: admin (all), operator (operate), viewer (read-only).
-- Permission format: `recurso:accion` (e.g., `facturadores:crear`, `facturas:ver`).
-- All write endpoints must call `log_action()` from `backend/app/services/audit.py` before commit.
-- `log_action()` does NOT commit; it participates in the caller's transaction.
-- Login rate limiting: 5 failed attempts -> 15 min lockout (fields `login_attempts`, `locked_until` on `Usuario`).
-- Never leak cross-tenant data.
-- When deleting/updating related entities, sync aggregate counters.
-- Empty lotes should be removed to avoid stale UI and label collisions.
-
-## Frontend style guidelines (React)
-- Codebase is JS-only (no TypeScript).
-- Follow existing formatting:
-  - single quotes
-  - no semicolons
-  - functional components + hooks
-- Naming conventions:
-  - `PascalCase` -> components
-  - `camelCase` -> vars/functions
+REQUIRE:
+- Follow existing style: single quotes, no semicolons, functional components with hooks.
 - Use `@/` alias for imports from `src`.
-- Keep HTTP calls centralized in `frontend/src/api/client.js`.
-- Use TanStack Query for server state.
-- In mutations, invalidate relevant query keys after success.
-- Show user-facing failures with `toast.error(...)`.
-- Avoid fragile optimistic assumptions in billing flows.
+- Keep billing/invoicing UI flows conservative (avoid fragile optimistic assumptions).
 
-## CSV and invoicing domain guidance
-- CSV parser supports UTF-8 and Latin-1.
-- Supported date formats: `YYYY-MM-DD` and `DD/MM/YYYY`.
-- Decimal parser accepts dot and comma separators.
-- CSV import supports grouped multi-line invoices (multiple item rows).
-- Keep lote/facturador/environment consistency within a lote.
+## Domain Invariants
 
-## Migration and schema guidelines
-- Use Flask-Migrate: `flask db migrate`, `flask db upgrade`.
-- Avoid rewriting old migrations unless explicitly required.
-- Prefer additive and backward-compatible schema changes.
+REJECT if:
+- Lote/facturador/environment consistency is broken within a lote.
+- Aggregate counters are not synced after delete/update operations.
+- Empty lotes are left behind when they should be removed.
 
-## Change checklist for agents
-- Understand affected backend and frontend flows before editing.
-- Add regression tests for bug fixes when feasible.
-- Run targeted tests for touched modules.
-- Run frontend lint/build when touching frontend logic.
-- Verify tenant isolation is still enforced.
-- Verify lote counters and lifecycle remain consistent.
-- New write endpoints must use `@permission_required` and call `log_action()`.
-- New frontend pages/sections must be gated by permissions in Sidebar and routes.
-- Document non-obvious behavior changes in your final summary.
+REQUIRE:
+- CSV import compatibility for UTF-8 and Latin-1.
+- Date parsing compatibility for `YYYY-MM-DD` and `DD/MM/YYYY`.
+- Decimal parsing compatibility for dot and comma separators.
+- Support grouped multi-line invoices in CSV import flow.
 
-## Fast file map
-- `backend/app/api/facturas.py` -> import, invoice CRUD, bulk delete.
-- `backend/app/api/lotes.py` -> lote listing/facturar/delete.
-- `backend/app/api/usuarios.py` -> user CRUD, activate/deactivate.
-- `backend/app/api/audit.py` -> audit log listing.
-- `backend/app/services/permissions.py` -> role/permission definitions.
-- `backend/app/services/audit.py` -> `log_action()` helper.
-- `backend/app/services/csv_parser.py` -> CSV parsing and grouping.
-- `backend/app/tasks/facturacion.py` -> async ARCA emission.
-- `backend/app/services/comprobante_renderer.py` -> invoice HTML/QR.
-- `backend/app/services/comprobante_pdf.py` -> HTML->PDF rendering.
-- `frontend/src/pages/facturar/index.jsx` -> lote picker/table/actions.
-- `frontend/src/pages/usuarios/index.jsx` -> user management page.
-- `frontend/src/pages/auditoria/index.jsx` -> audit log viewer.
-- `frontend/src/hooks/usePermission.js` -> permission hooks.
-- `frontend/src/hooks/useJobStatus.js` -> Celery polling.
+## Testing And Validation Expectations
 
-Keep changes minimal, tenant-safe, and test-backed.
+REQUIRE:
+- For backend changes, run targeted pytest for touched modules when feasible.
+- For frontend changes, run `npm run lint` and `npm run build` when feasible.
+- Verify tenant isolation and permissions on changed paths.
+
+## Branch And Release Governance
+
+REJECT if:
+- A change is proposed directly on `main`/`master` without pull request context.
+- A stable branch (`main`, `release/*`) is used for exploratory or unrelated changes.
+- A release/hotfix change lacks explicit risk notes or validation evidence.
+
+REQUIRE:
+- Use branch prefixes: `feature/*`, `fix/*`, `chore/*`, `hotfix/*`.
+- Merge into `main` only through pull requests with required checks green.
+- Tag stable releases with semantic versioning (`vMAJOR.MINOR.PATCH`).
+
+PREFER:
+- Small PRs scoped to one purpose.
+- Separate tooling/governance changes from product logic changes.
+
+Useful commands:
+- Backend all tests: `cd backend && python -m pytest`
+- Backend single file: `cd backend && python -m pytest tests/test_facturas.py -v`
+- Backend single test: `cd backend && python -m pytest tests/test_facturas.py::TestBulkDeleteFacturas::test_bulk_delete -v`
+- Frontend lint: `cd frontend && npm run lint`
+- Frontend build: `cd frontend && npm run build`
+
+## Fast File Map
+- `backend/app/api/facturas.py`: import, invoice CRUD, bulk delete.
+- `backend/app/api/lotes.py`: lote listing/facturar/delete.
+- `backend/app/api/usuarios.py`: user CRUD, activate/deactivate.
+- `backend/app/api/audit.py`: audit log listing.
+- `backend/app/services/permissions.py`: role and permission definitions.
+- `backend/app/services/audit.py`: `log_action()` helper.
+- `backend/app/services/csv_parser.py`: CSV parsing and grouping.
+- `backend/app/tasks/facturacion.py`: async ARCA emission.
+- `backend/app/services/comprobante_renderer.py`: invoice HTML and QR.
+- `backend/app/services/comprobante_pdf.py`: HTML to PDF rendering.
+- `frontend/src/pages/facturar/index.jsx`: lote picker/table/actions.
+- `frontend/src/pages/usuarios/index.jsx`: user management page.
+- `frontend/src/pages/auditoria/index.jsx`: audit log viewer.
+- `frontend/src/hooks/usePermission.js`: permission hooks.
+- `frontend/src/hooks/useJobStatus.js`: Celery polling.
+
+## Response Format (Mandatory)
+First line MUST be exactly one of:
+
+`STATUS: PASSED`
+`STATUS: FAILED`
+
+If FAILED, report each issue as:
+- `path:line - rule - why it fails - suggested fix`

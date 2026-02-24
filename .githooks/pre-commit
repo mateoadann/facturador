@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if ! command -v gga >/dev/null 2>&1; then
+  echo "ERROR: gga no está instalado o no está en PATH."
+  echo "Instalación: brew install gentleman-programming/tap/gga"
+  exit 1
+fi
+
+# ======== GGA START ========
+# Gentleman Guardian Angel - Code Review
+gga run || exit 1
+# ======== GGA END ========
