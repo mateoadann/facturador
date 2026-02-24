@@ -33,8 +33,15 @@ jobs:
       - name: Show GGA version
         run: gga version
 
+      - name: Prepare base branch for PR mode
+        run: |
+          BASE_BRANCH="${{ github.event.pull_request.base.ref || 'main' }}"
+          echo "Using PR base branch: ${BASE_BRANCH}"
+          git fetch origin "${BASE_BRANCH}:${BASE_BRANCH}" --depth=1
+
       - name: Run GGA in PR mode
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GGA_PROVIDER: github:gpt-4o
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref || 'main' }}
         run: gga run --pr-mode --diff-only
