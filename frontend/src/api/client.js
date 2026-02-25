@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -134,6 +134,8 @@ export const api = {
     list: (params) => client.get('/lotes', { params }),
     get: (id) => client.get(`/lotes/${id}`),
     facturar: (id, data) => client.post(`/lotes/${id}/facturar`, data),
+    sendEmails: (id, data) => client.post(`/lotes/${id}/enviar-emails`, data),
+    emailPreview: (id) => client.get(`/lotes/${id}/email-preview`),
     delete: (id) => client.delete(`/lotes/${id}`),
   },
 

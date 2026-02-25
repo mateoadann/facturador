@@ -1,7 +1,9 @@
-from flask import Blueprint, request, jsonify, g
 from uuid import UUID
+
+from flask import Blueprint, request, jsonify, g
+
 from ..extensions import db
-from ..models import Lote, Factura, Facturador
+from ..models import Lote, Factura, Facturador, EmailConfig
 from ..utils import permission_required
 from ..services.audit import log_action
 
@@ -12,12 +14,11 @@ lotes_bp = Blueprint('lotes', __name__)
 @permission_required('facturas:ver')
 def list_lotes():
     """Listar lotes del tenant."""
-    _purge_empty_lotes(g.tenant_id)
-
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     estado = request.args.get('estado')
     para_facturar = request.args.get('para_facturar', 'false').lower() == 'true'
+    para_email = request.args.get('para_email', 'false').lower() == 'true'
 
     query = Lote.query.filter_by(tenant_id=g.tenant_id)
 
@@ -27,6 +28,12 @@ def list_lotes():
             Factura.estado.in_(['pendiente', 'error']),
         ).distinct()
         query = query.filter(Lote.id.in_(retryable_lote_ids))
+    elif para_email:
+        emailable_lote_ids = db.session.query(Factura.lote_id).filter(
+            Factura.tenant_id == g.tenant_id,
+            Factura.estado == 'autorizado',
+        ).distinct()
+        query = query.filter(Lote.id.in_(emailable_lote_ids))
     elif estado:
         query = query.filter_by(estado=estado)
 
@@ -41,27 +48,6 @@ def list_lotes():
         'per_page': per_page,
         'pages': pagination.pages
     }), 200
-
-
-def _purge_empty_lotes(tenant_id):
-    lotes = Lote.query.filter_by(tenant_id=tenant_id).all()
-    removed_any = False
-
-    for lote in lotes:
-        has_facturas = db.session.query(Factura.id).filter_by(
-            tenant_id=tenant_id,
-            lote_id=lote.id,
-        ).first()
-        if has_facturas:
-            continue
-
-        db.session.delete(lote)
-        removed_any = True
-
-    if removed_any:
-        db.session.commit()
-
-
 @lotes_bp.route('/<uuid:lote_id>', methods=['GET'])
 @permission_required('facturas:ver')
 def get_lote(lote_id):
@@ -79,6 +65,7 @@ def get_lote(lote_id):
         Factura.estado,
         db.func.count(Factura.id)
     ).filter(
+        Factura.tenant_id == g.tenant_id,
         Factura.lote_id == lote_id
     ).group_by(Factura.estado).all()
 
@@ -201,7 +188,7 @@ def facturar_lote(lote_id):
 
     # Disparar tarea de Celery
     from ..tasks.facturacion import procesar_lote
-    task = procesar_lote.delay(str(lote_id))
+    task = procesar_lote.delay(str(lote_id), str(g.tenant_id))
 
     # Guardar task_id
     lote.celery_task_id = task.id
@@ -221,6 +208,119 @@ def facturar_lote(lote_id):
     }), 202
 
 
+@lotes_bp.route('/<uuid:lote_id>/enviar-emails', methods=['POST'])
+@permission_required('email:enviar')
+def enviar_emails_lote_api(lote_id):
+    """Iniciar el envio masivo de emails de comprobantes de un lote."""
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode', 'no_enviados')
+
+    if mode not in ['todos', 'no_enviados']:
+        return jsonify({'error': 'mode invalido. Valores permitidos: todos, no_enviados'}), 400
+
+    lote = Lote.query.filter_by(
+        id=lote_id,
+        tenant_id=g.tenant_id,
+    ).first()
+
+    if not lote:
+        return jsonify({'error': 'Lote no encontrado'}), 404
+
+    config = EmailConfig.query.filter_by(
+        tenant_id=g.tenant_id,
+        email_habilitado=True,
+    ).first()
+    if not config:
+        return jsonify({'error': 'No hay configuracion de email habilitada'}), 400
+
+    facturas_query = Factura.query.filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.lote_id == lote_id,
+        Factura.estado == 'autorizado',
+    )
+
+    if mode == 'no_enviados':
+        facturas_query = facturas_query.filter(Factura.email_enviado.is_(False))
+
+    elegibles = [
+        factura for factura in facturas_query.all()
+        if factura.receptor and factura.receptor.email
+    ]
+
+    if not elegibles:
+        return jsonify({'error': 'No hay facturas elegibles para enviar'}), 400
+
+    from ..tasks.email import enviar_emails_lote as enviar_emails_lote_task
+    task = enviar_emails_lote_task.delay(str(lote_id), str(g.tenant_id), mode)
+
+    log_action(
+        'email:enviar',
+        recurso='lote',
+        recurso_id=lote.id,
+        detalle={
+            'mode': mode,
+            'facturas_elegibles': len(elegibles),
+            'task_id': task.id,
+        }
+    )
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Envio masivo de emails iniciado',
+        'task_id': task.id,
+        'mode': mode,
+        'facturas_elegibles': len(elegibles),
+    }), 202
+
+
+@lotes_bp.route('/<uuid:lote_id>/email-preview', methods=['GET'])
+@permission_required('email:enviar')
+def email_preview_lote(lote_id):
+    """Obtener contadores de envio de emails para un lote."""
+    lote = Lote.query.filter_by(
+        id=lote_id,
+        tenant_id=g.tenant_id,
+    ).first()
+
+    if not lote:
+        return jsonify({'error': 'Lote no encontrado'}), 404
+
+    autorizadas = Factura.query.filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.lote_id == lote_id,
+        Factura.estado == 'autorizado',
+    )
+
+    autorizadas_list = autorizadas.all()
+    autorizadas_total = len(autorizadas_list)
+
+    autorizadas_con_email_total = sum(
+        1
+        for factura in autorizadas_list
+        if factura.receptor and factura.receptor.email and factura.receptor.email.strip()
+    )
+
+    enviar_no_enviados = sum(
+        1
+        for factura in autorizadas_list
+        if (
+            factura.receptor
+            and factura.receptor.email
+            and factura.receptor.email.strip()
+            and not factura.email_enviado
+        )
+    )
+
+    return jsonify({
+        'lote_id': str(lote.id),
+        'autorizados': autorizadas_total,
+        'autorizados_con_email': autorizadas_con_email_total,
+        'autorizados_sin_email': autorizadas_total - autorizadas_con_email_total,
+        'enviar_todos': autorizadas_con_email_total,
+        'enviar_no_enviados': enviar_no_enviados,
+    }), 200
+
+
 @lotes_bp.route('/<uuid:lote_id>', methods=['DELETE'])
 @permission_required('facturas:eliminar')
 def delete_lote(lote_id):
@@ -235,6 +335,7 @@ def delete_lote(lote_id):
 
     # Verificar que no hay facturas autorizadas
     facturas_autorizadas = Factura.query.filter_by(
+        tenant_id=g.tenant_id,
         lote_id=lote_id,
         estado='autorizado'
     ).count()
@@ -245,7 +346,10 @@ def delete_lote(lote_id):
         }), 400
 
     # Eliminar facturas del lote
-    Factura.query.filter_by(lote_id=lote_id).delete()
+    Factura.query.filter_by(
+        tenant_id=g.tenant_id,
+        lote_id=lote_id,
+    ).delete()
 
     log_action('lote:eliminar', recurso='lote', recurso_id=lote.id,
                detalle={'etiqueta': lote.etiqueta})

@@ -77,8 +77,9 @@ REQUIRE:
 ## Testing And Validation Expectations
 
 REQUIRE:
-- For backend changes, run targeted pytest for touched modules when feasible.
-- For frontend changes, run `npm run lint` and `npm run build` when feasible.
+- Run tests/checks via Docker/Make targets in this repository (do not rely on host Python/Node).
+- For backend changes, run `make test-backend` (or `make test`) when feasible.
+- For frontend changes, run `make lint-frontend` and `make build-frontend` when feasible.
 - Verify tenant isolation and permissions on changed paths.
 
 ## Branch And Release Governance
@@ -98,11 +99,11 @@ PREFER:
 - Separate tooling/governance changes from product logic changes.
 
 Useful commands:
-- Backend all tests: `cd backend && python -m pytest`
-- Backend single file: `cd backend && python -m pytest tests/test_facturas.py -v`
-- Backend single test: `cd backend && python -m pytest tests/test_facturas.py::TestBulkDeleteFacturas::test_bulk_delete -v`
-- Frontend lint: `cd frontend && npm run lint`
-- Frontend build: `cd frontend && npm run build`
+- Backend all tests (Docker): `make test-backend`
+- Backend default suite (Docker): `make test`
+- Frontend lint (Docker): `make lint-frontend`
+- Frontend build (Docker): `make build-frontend`
+- Full pre-push checks (Docker): `make pre-push`
 
 ## Fast File Map
 - `backend/app/api/facturas.py`: import, invoice CRUD, bulk delete.
