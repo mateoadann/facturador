@@ -60,3 +60,9 @@ htmlcov/
 # Misc
 *.log
 *.bak
+
+# AI/tooling local dirs (temporal)
+/.claude/
+/.codex/
+/.opencode/
+/openspec/
