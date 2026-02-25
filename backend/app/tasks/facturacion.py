@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from time import sleep
+from uuid import UUID
 
 from arca_integration.constants import ALICUOTAS_IVA, CONDICIONES_IVA
 from arca_integration.exceptions import ArcaAuthError, ArcaError, ArcaNetworkError, ArcaValidationError
@@ -31,145 +32,155 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
     if not lote:
         return {'error': 'Lote no encontrado'}
 
-    # Obtener facturas pendientes
-    facturas = Factura.query.filter_by(
-        tenant_id=tenant_id,
-        lote_id=lote_id,
-        estado='pendiente'
-    ).all()
-
-    total = len(facturas)
-    processed = 0
-    ok = 0
-    errors = 0
-
-    # Agrupar facturas por facturador para reutilizar conexión
-    facturas_por_facturador = {}
-    for factura in facturas:
-        if factura.facturador_id not in facturas_por_facturador:
-            facturas_por_facturador[factura.facturador_id] = []
-        facturas_por_facturador[factura.facturador_id].append(factura)
-
-    for facturador_id, facturas_grupo in facturas_por_facturador.items():
-        facturador = Facturador.query.filter_by(
-            id=facturador_id,
+    try:
+        # Obtener facturas pendientes
+        facturas = Factura.query.filter_by(
             tenant_id=tenant_id,
-        ).first()
+            lote_id=lote_id,
+            estado='pendiente'
+        ).all()
 
-        if not facturador or not facturador.cert_encrypted:
-            # Marcar todas las facturas de este facturador como error
-            for factura in facturas_grupo:
-                factura.estado = 'error'
-                factura.error_mensaje = 'Facturador sin certificados'
-                errors += 1
-                processed += 1
-                self.update_state(state='PROGRESS', meta={
-                    'current': processed,
-                    'total': total,
-                    'percent': int((processed / total) * 100)
-                })
-            continue
+        total = len(facturas)
+        processed = 0
+        ok = 0
+        errors = 0
 
-        try:
-            # Desencriptar certificados
-            cert = decrypt_certificate(facturador.cert_encrypted)
-            key = decrypt_certificate(facturador.key_encrypted)
+        # Agrupar facturas por facturador para reutilizar conexión
+        facturas_por_facturador = {}
+        for factura in facturas:
+            if factura.facturador_id not in facturas_por_facturador:
+                facturas_por_facturador[factura.facturador_id] = []
+            facturas_por_facturador[factura.facturador_id].append(factura)
 
-            # Crear cliente ARCA
-            client = ArcaClient(
-                cuit=facturador.cuit,
-                cert=cert,
-                key=key,
-                ambiente=facturador.ambiente
-            )
+        for facturador_id, facturas_grupo in facturas_por_facturador.items():
+            facturador = Facturador.query.filter_by(
+                id=facturador_id,
+                tenant_id=tenant_id,
+            ).first()
 
-            # Procesar cada factura
-            for factura in facturas_grupo:
-                try:
-                    result = procesar_factura(client, factura, facturador)
+            if not facturador or not facturador.cert_encrypted:
+                # Marcar todas las facturas de este facturador como error
+                for factura in facturas_grupo:
+                    factura.estado = 'error'
+                    factura.error_mensaje = 'Facturador sin certificados'
+                    errors += 1
+                    processed += 1
+                    self.update_state(state='PROGRESS', meta={
+                        'current': processed,
+                        'total': total,
+                        'percent': int((processed / total) * 100)
+                    })
+                continue
 
-                    if _is_retryable_wsaa_error(result):
-                        sleep(5)
+            try:
+                # Desencriptar certificados
+                cert = decrypt_certificate(facturador.cert_encrypted)
+                key = decrypt_certificate(facturador.key_encrypted)
+
+                # Crear cliente ARCA
+                client = ArcaClient(
+                    cuit=facturador.cuit,
+                    cert=cert,
+                    key=key,
+                    ambiente=facturador.ambiente
+                )
+
+                # Procesar cada factura
+                for factura in facturas_grupo:
+                    try:
                         result = procesar_factura(client, factura, facturador)
 
-                    if result.get('success'):
-                        factura.estado = 'autorizado'
-                        factura.cae = result['cae']
-                        factura.cae_vencimiento = result['cae_vencimiento']
-                        factura.numero_comprobante = result['numero_comprobante']
-                        factura.arca_response = result.get('response')
-                        ok += 1
+                        if _is_retryable_wsaa_error(result):
+                            sleep(5)
+                            result = procesar_factura(client, factura, facturador)
 
-                        # Enviar email automáticamente si el receptor tiene email
-                        if factura.receptor and factura.receptor.email:
-                            from .email import enviar_factura_email
-                            enviar_factura_email.delay(str(factura.id), str(factura.tenant_id))
-                    else:
+                        if result.get('success'):
+                            factura.estado = 'autorizado'
+                            factura.cae = result['cae']
+                            factura.cae_vencimiento = result['cae_vencimiento']
+                            factura.numero_comprobante = result['numero_comprobante']
+                            factura.arca_response = _to_json_safe(result.get('response'))
+                            ok += 1
+
+                            # Enviar email automáticamente si el receptor tiene email
+                            if factura.receptor and factura.receptor.email:
+                                from .email import enviar_factura_email
+                                enviar_factura_email.delay(str(factura.id), str(factura.tenant_id))
+                        else:
+                            factura.estado = 'error'
+                            factura.error_codigo = result.get('error_code')
+                            factura.error_mensaje = result.get('error_message')
+                            factura.arca_response = _to_json_safe(result.get('response'))
+                            errors += 1
+
+                    except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                         factura.estado = 'error'
-                        factura.error_codigo = result.get('error_code')
-                        factura.error_mensaje = result.get('error_message')
-                        factura.arca_response = result.get('response')
+                        factura.error_codigo = 'procesamiento_error'
+                        factura.error_mensaje = str(e)
                         errors += 1
 
-                except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
-                    factura.estado = 'error'
-                    factura.error_codigo = 'procesamiento_error'
-                    factura.error_mensaje = str(e)
-                    errors += 1
+                    processed += 1
+                    db.session.commit()
 
-                processed += 1
+                    # Actualizar progreso
+                    self.update_state(state='PROGRESS', meta={
+                        'current': processed,
+                        'total': total,
+                        'percent': int((processed / total) * 100)
+                    })
+
+            except (
+                ArcaAuthError,
+                ArcaNetworkError,
+                ArcaError,
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as e:
+                # Error de conexión general
+                for factura in facturas_grupo:
+                    factura.estado = 'error'
+                    factura.error_codigo = 'conexion_arca'
+                    factura.error_mensaje = f'Error de conexión: {str(e)}'
+                    errors += 1
+                    processed += 1
                 db.session.commit()
 
-                # Actualizar progreso
-                self.update_state(state='PROGRESS', meta={
-                    'current': processed,
-                    'total': total,
-                    'percent': int((processed / total) * 100)
-                })
+        # Actualizar lote
+        stats = db.session.query(
+            Factura.estado,
+            db.func.count(Factura.id),
+        ).filter(
+            Factura.tenant_id == tenant_id,
+            Factura.lote_id == lote_id,
+        ).group_by(Factura.estado).all()
+        stats_map = {estado: count for estado, count in stats}
 
-        except (
-            ArcaAuthError,
-            ArcaNetworkError,
-            ArcaError,
-            ConnectionError,
-            TimeoutError,
-            OSError,
-            RuntimeError,
-            ValueError,
-        ) as e:
-            # Error de conexión general
-            for factura in facturas_grupo:
-                factura.estado = 'error'
-                factura.error_codigo = 'conexion_arca'
-                factura.error_mensaje = f'Error de conexión: {str(e)}'
-                errors += 1
-                processed += 1
+        lote.total_facturas = sum(stats_map.values())
+        lote.estado = 'completado'
+        lote.facturas_ok = stats_map.get('autorizado', 0)
+        lote.facturas_error = stats_map.get('error', 0)
+        lote.processed_at = datetime.utcnow()
+        db.session.commit()
+
+        return {
+            'status': 'completed',
+            'processed': processed,
+            'total': total,
+            'ok': ok,
+            'errors': errors
+        }
+    except Exception as exc:
+        logger.exception('Fallo inesperado procesando lote %s', lote_id)
+        db.session.rollback()
+        lote_fallback = Lote.query.filter_by(id=lote_id, tenant_id=tenant_id).first()
+        if lote_fallback:
+            lote_fallback.estado = 'error'
+            lote_fallback.processed_at = datetime.utcnow()
             db.session.commit()
-
-    # Actualizar lote
-    stats = db.session.query(
-        Factura.estado,
-        db.func.count(Factura.id),
-    ).filter(
-        Factura.tenant_id == tenant_id,
-        Factura.lote_id == lote_id,
-    ).group_by(Factura.estado).all()
-    stats_map = {estado: count for estado, count in stats}
-
-    lote.total_facturas = sum(stats_map.values())
-    lote.estado = 'completado'
-    lote.facturas_ok = stats_map.get('autorizado', 0)
-    lote.facturas_error = stats_map.get('error', 0)
-    lote.processed_at = datetime.utcnow()
-    db.session.commit()
-
-    return {
-        'status': 'completed',
-        'processed': processed,
-        'total': total,
-        'ok': ok,
-        'errors': errors
-    }
+        raise
 
 
 def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
@@ -268,7 +279,7 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
         request_data = builder.build()
 
         # Guardar request
-        factura.arca_request = request_data
+        factura.arca_request = _to_json_safe(request_data)
 
         # Enviar a ARCA
         wsfe = WSFEService(client)
@@ -280,14 +291,14 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
                 'cae': response['cae'],
                 'cae_vencimiento': response['cae_vencimiento'],
                 'numero_comprobante': numero_comprobante,
-                'response': response
+                'response': _to_json_safe(response)
             }
         else:
             return {
                 'success': False,
                 'error_code': response.get('error_code'),
                 'error_message': response.get('error_message', 'Error desconocido'),
-                'response': response
+                'response': _to_json_safe(response)
             }
 
     except ArcaValidationError as e:
@@ -326,6 +337,32 @@ def _is_retryable_wsaa_error(result: dict) -> bool:
         'ya posee un ta valido',
     ]
     return any(fragment in message for fragment in retryable_fragments)
+
+
+def _to_json_safe(value):
+    """Convierte estructuras con Decimal/Date/UUID a tipos JSON-serializables."""
+    if isinstance(value, Decimal):
+        return float(value)
+
+    if isinstance(value, (datetime, )):
+        return value.isoformat()
+
+    if hasattr(value, 'isoformat') and callable(value.isoformat):
+        try:
+            return value.isoformat()
+        except TypeError:
+            pass
+
+    if isinstance(value, UUID):
+        return str(value)
+
+    if isinstance(value, dict):
+        return {str(k): _to_json_safe(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_to_json_safe(v) for v in value]
+
+    return value
 
 
 def _build_iva_from_items(factura: Factura) -> list[dict]:

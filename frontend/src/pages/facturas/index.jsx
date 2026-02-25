@@ -76,6 +76,22 @@ function Facturas() {
     enabled: !!emailTaskId,
   })
 
+  const { data: lotesProcesandoData } = useQuery({
+    queryKey: ['lotes', { estado: 'procesando', per_page: 50 }],
+    queryFn: async () => {
+      const response = await api.lotes.list({ estado: 'procesando', per_page: 50 })
+      return response.data
+    },
+    refetchInterval: 2000,
+  })
+
+  const loteProcesando = (lotesProcesandoData?.items || [])[0] || null
+
+  const { data: facturacionJobStatus } = useJobStatus(loteProcesando?.celery_task_id, {
+    enabled: !!loteProcesando?.celery_task_id,
+    refetchInterval: 2000,
+  })
+
   const sendLoteEmailsMutation = useMutation({
     mutationFn: ({ loteId, mode }) => api.lotes.sendEmails(loteId, { mode }),
     onSuccess: (response) => {
@@ -179,6 +195,17 @@ function Facturas() {
 
   return (
     <div className="space-y-6">
+      {loteProcesando && (
+        <Progress
+          value={facturacionJobStatus?.progress?.percent || 0}
+          max={100}
+          label={`Facturando lote: ${loteProcesando.etiqueta}`}
+          showCount
+          current={facturacionJobStatus?.progress?.current || 0}
+          total={facturacionJobStatus?.progress?.total || loteProcesando.total_facturas || 0}
+        />
+      )}
+
       {emailTaskId && emailJobStatus?.status === 'PROGRESS' && (
         <Progress
           value={emailJobStatus.progress?.percent || 0}
@@ -387,16 +414,16 @@ function Facturas() {
         </Table>
 
         {/* Pagination */}
-        {data?.pages > 1 && (
+        {(data?.total || 0) > 0 && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3">
             <span className="text-sm text-text-secondary">
-              Mostrando {facturas.length} de {data.total} facturas
+              Página {data?.page || filters.page} de {data?.pages || 1} · Mostrando {facturas.length} de {data.total} facturas
             </span>
             <div className="flex gap-2">
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={filters.page <= 1}
+                disabled={(data?.page || filters.page) <= 1}
                 onClick={() => setFilters({ ...filters, page: filters.page - 1 })}
               >
                 Anterior
@@ -404,7 +431,7 @@ function Facturas() {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled={filters.page >= data.pages}
+                disabled={(data?.page || filters.page) >= (data?.pages || 1)}
                 onClick={() => setFilters({ ...filters, page: filters.page + 1 })}
               >
                 Siguiente

@@ -22,6 +22,7 @@ import ImportModal from './ImportModal'
 function Receptores() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingReceptor, setEditingReceptor] = useState(null)
@@ -35,9 +36,9 @@ function Receptores() {
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['receptores', search],
+    queryKey: ['receptores', search, page],
     queryFn: async () => {
-      const response = await api.receptores.list({ search, per_page: 100 })
+      const response = await api.receptores.list({ search, page, per_page: 20 })
       return response.data
     },
   })
@@ -78,6 +79,10 @@ function Receptores() {
   })
 
   const receptores = data?.items || []
+  const currentPage = data?.page || page
+  const totalPages = data?.pages || 1
+  const totalItems = data?.total || 0
+  const showPagination = totalItems > 0
 
   const handleOpenModal = (receptor = null) => {
     if (receptor) {
@@ -150,7 +155,10 @@ function Receptores() {
             type="text"
             placeholder="Buscar por nombre o CUIT..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             className="h-10 w-full rounded-md border border-border bg-card pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -166,6 +174,31 @@ function Receptores() {
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card">
+        {showPagination && (
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <span className="text-sm text-text-secondary">
+              Página {currentPage} de {totalPages} · Mostrando {receptores.length} de {totalItems} receptores
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow>
@@ -238,6 +271,32 @@ function Receptores() {
             )}
           </TableBody>
         </Table>
+
+        {showPagination && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <span className="text-sm text-text-secondary">
+              Página {currentPage} de {totalPages} · Mostrando {receptores.length} de {totalItems} receptores
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}

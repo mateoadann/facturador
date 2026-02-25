@@ -1,13 +1,17 @@
 from uuid import UUID
 
 from flask import Blueprint, request, jsonify, g
+from celery.result import AsyncResult
 
-from ..extensions import db
+from ..extensions import db, celery
 from ..models import Lote, Factura, Facturador, EmailConfig
 from ..utils import permission_required
 from ..services.audit import log_action
 
 lotes_bp = Blueprint('lotes', __name__)
+
+
+ACTIVE_TASK_STATES = {'STARTED', 'PROGRESS', 'RETRY'}
 
 
 @lotes_bp.route('', methods=['GET'])
@@ -97,7 +101,12 @@ def facturar_lote(lote_id):
         return jsonify({'error': 'Lote no encontrado'}), 404
 
     if lote.estado == 'procesando':
-        return jsonify({'error': 'El lote ya está siendo procesado'}), 400
+        if _lote_task_activa(lote.celery_task_id):
+            return jsonify({'error': 'El lote ya está siendo procesado'}), 400
+
+        # Si quedó "colgado" en procesando por falla previa, permitir reanudar
+        lote.estado = 'error'
+        db.session.flush()
 
     # Verificar que hay facturas reintentables
     facturas_reintentables = Factura.query.filter(
@@ -206,6 +215,15 @@ def facturar_lote(lote_id):
             'ambiente': facturador.ambiente,
         }
     }), 202
+
+
+def _lote_task_activa(task_id: str | None) -> bool:
+    """Determina si la tarea de Celery asociada al lote sigue activa."""
+    if not task_id:
+        return False
+
+    task = AsyncResult(task_id, app=celery)
+    return task.status in ACTIVE_TASK_STATES
 
 
 @lotes_bp.route('/<uuid:lote_id>/enviar-emails', methods=['POST'])
