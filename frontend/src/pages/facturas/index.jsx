@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Download, Loader2, Mail, MailX, Send } from 'lucide-react'
 import { api } from '@/api/client'
 import {
@@ -7,6 +7,7 @@ import {
   Badge,
   ErrorBadgeInfo,
   Input,
+  Progress,
   Select,
   Table,
   TableHeader,
@@ -16,9 +17,13 @@ import {
   TableCell,
 } from '@/components/ui'
 import { formatCUIT, formatCurrency, formatDate, formatComprobante } from '@/lib/utils'
+import { useJobStatus } from '@/hooks/useJobStatus'
+import { usePermission } from '@/hooks/usePermission'
 import { toast } from '@/stores/toastStore'
+import BulkEmailModal from './BulkEmailModal'
 
 function Facturas() {
+  const queryClient = useQueryClient()
   const [filters, setFilters] = useState({
     estadoVista: 'finalizados',
     facturador_id: '',
@@ -28,6 +33,9 @@ function Facturas() {
   })
   const [downloadingFacturaId, setDownloadingFacturaId] = useState(null)
   const [sendingEmailId, setSendingEmailId] = useState(null)
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [emailTaskId, setEmailTaskId] = useState(null)
+  const canSendEmail = usePermission('email:enviar')
 
   const { data, isLoading } = useQuery({
     queryKey: ['facturas', filters],
@@ -55,8 +63,34 @@ function Facturas() {
     },
   })
 
+  const { data: lotesData } = useQuery({
+    queryKey: ['lotes', { para_email: true }],
+    queryFn: async () => {
+      const response = await api.lotes.list({ para_email: true, per_page: 200 })
+      return response.data
+    },
+    enabled: canSendEmail,
+  })
+
+  const { data: emailJobStatus } = useJobStatus(emailTaskId, {
+    enabled: !!emailTaskId,
+  })
+
+  const sendLoteEmailsMutation = useMutation({
+    mutationFn: ({ loteId, mode }) => api.lotes.sendEmails(loteId, { mode }),
+    onSuccess: (response) => {
+      setEmailTaskId(response?.data?.task_id || null)
+      setIsBulkModalOpen(false)
+      toast.info('Envio de emails iniciado', 'El lote se esta procesando en segundo plano')
+    },
+    onError: (error) => {
+      toast.error('Error', error.response?.data?.error || 'No se pudo iniciar el envio masivo')
+    },
+  })
+
   const facturas = data?.items || []
   const facturadores = facturadoresData?.items || []
+  const lotes = lotesData?.items || []
 
   const getEstadoBadge = (estado, factura) => {
     if (estado === 'error') {
@@ -82,9 +116,15 @@ function Facturas() {
   }
 
   const handleSendEmail = async (factura) => {
+    if (!canSendEmail) {
+      return
+    }
+
     setSendingEmailId(factura.id)
     try {
       await api.facturas.sendEmail(factura.id)
+      queryClient.invalidateQueries(['facturas'])
+      queryClient.invalidateQueries(['lotes'])
       toast.success('Email enviado', `Comprobante enviado a ${factura.receptor?.email || 'el receptor'}`)
     } catch (error) {
       toast.error('Error al enviar email', error.response?.data?.error || 'No se pudo enviar el email')
@@ -117,8 +157,39 @@ function Facturas() {
     }
   }
 
+  if (emailJobStatus?.status === 'SUCCESS' || emailJobStatus?.status === 'FAILURE') {
+    if (emailTaskId) {
+      setEmailTaskId(null)
+      queryClient.invalidateQueries(['facturas'])
+      queryClient.invalidateQueries(['lotes'])
+
+      if (emailJobStatus.status === 'SUCCESS') {
+        const result = emailJobStatus.result
+        toast.success(
+          'Envio masivo completado',
+          result
+            ? `${result.sent || 0} enviados, ${result.skipped || 0} omitidos, ${result.errors || 0} errores`
+            : 'Proceso completado'
+        )
+      } else {
+        toast.error('Error al enviar emails', emailJobStatus.error || 'Fallo la tarea de envio masivo')
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {emailTaskId && emailJobStatus?.status === 'PROGRESS' && (
+        <Progress
+          value={emailJobStatus.progress?.percent || 0}
+          max={100}
+          label="Enviando emails del lote..."
+          showCount
+          current={emailJobStatus.progress?.current || 0}
+          total={emailJobStatus.progress?.total || 0}
+        />
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-4">
         <Select
@@ -168,6 +239,17 @@ function Facturas() {
         >
           Limpiar
         </Button>
+
+        {canSendEmail && (
+          <Button
+            variant="secondary"
+            icon={Send}
+            onClick={() => setIsBulkModalOpen(true)}
+            disabled={sendLoteEmailsMutation.isPending || !!emailTaskId}
+          >
+            Enviar emails del lote
+          </Button>
+        )}
       </div>
 
       {/* Table */}
@@ -281,7 +363,7 @@ function Facturas() {
                         )}
                         PDF
                       </Button>
-                      {factura.estado === 'autorizado' && factura.receptor?.email && (
+                      {canSendEmail && factura.estado === 'autorizado' && factura.receptor?.email && (
                         <button
                           className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
                           onClick={() => handleSendEmail(factura)}
@@ -331,6 +413,14 @@ function Facturas() {
           </div>
         )}
       </div>
+
+      <BulkEmailModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        lotes={lotes}
+        onConfirm={({ loteId, mode }) => sendLoteEmailsMutation.mutate({ loteId, mode })}
+        isSubmitting={sendLoteEmailsMutation.isPending}
+      />
     </div>
   )
 }

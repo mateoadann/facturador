@@ -1,17 +1,19 @@
-from flask import Blueprint, request, jsonify, g, current_app, make_response
-from uuid import UUID
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
+from uuid import UUID
+
+from arca_integration.constants import ALICUOTAS_IVA
+from flask import Blueprint, request, jsonify, g, current_app, make_response
+
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
-from ..services.csv_parser import parse_csv
 from ..services.comprobante_rules import (
     es_comprobante_tipo_c,
     normalizar_importes_para_tipo_c,
 )
-from arca_integration.constants import ALICUOTAS_IVA
-from ..utils import permission_required
+from ..services.csv_parser import parse_csv
 from ..services.audit import log_action
+from ..utils import permission_required
 
 facturas_bp = Blueprint('facturas', __name__)
 
@@ -188,8 +190,8 @@ def get_comprobante_html(factura_id):
 
     try:
         html = _get_or_render_comprobante_html(factura, force=force)
-    except Exception as e:
-        return jsonify({'error': f'No se pudo generar el HTML del comprobante: {str(e)}'}), 400
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        return jsonify({'error': f'No se pudo generar el HTML del comprobante: {str(exc)}'}), 400
 
     return jsonify({
         'factura_id': str(factura.id),
@@ -220,8 +222,8 @@ def get_comprobante_pdf(factura_id):
 
         from ..services.comprobante_pdf import html_to_pdf_bytes
         pdf_bytes = html_to_pdf_bytes(html)
-    except Exception as e:
-        return jsonify({'error': f'No se pudo generar PDF: {str(e)}'}), 400
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        return jsonify({'error': f'No se pudo generar PDF: {str(exc)}'}), 400
 
     punto_venta = int(factura.punto_venta or 0)
     numero = int(factura.numero_comprobante or 0)
@@ -264,7 +266,7 @@ def import_csv():
         try:
             file.seek(0)
             content = file.read().decode('latin-1')
-        except Exception:
+        except (UnicodeDecodeError, OSError, ValueError):
             return jsonify({'error': 'No se pudo decodificar el archivo'}), 400
 
     # Parsear CSV
@@ -309,6 +311,8 @@ def import_csv():
 
     if facturas_creadas:
         lote.facturador_id = facturas_creadas[0].facturador_id
+
+    lote.total_facturas = len(facturas_creadas)
 
     log_action('lote:importar', recurso='lote', recurso_id=lote.id,
                detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas)})
@@ -427,10 +431,7 @@ def _get_or_render_comprobante_html(factura: Factura, force: bool = False) -> st
             return factura.comprobante_html
 
     from ..services.comprobante_renderer import render_comprobante_html
-
-    factura.comprobante_html = render_comprobante_html(factura)
-    db.session.commit()
-    return factura.comprobante_html
+    return render_comprobante_html(factura)
 
 
 def _parse_factura_update_payload(data: dict, factura: Factura, tenant_id: str) -> dict:
@@ -695,7 +696,7 @@ def enviar_email(factura_id):
         return jsonify({'error': 'No hay configuración de email habilitada'}), 400
 
     from ..tasks.email import enviar_factura_email
-    enviar_factura_email.delay(str(factura.id))
+    enviar_factura_email.delay(str(factura.id), str(g.tenant_id))
 
     log_action('email:enviar', recurso='factura', recurso_id=factura.id,
                detalle={'receptor_email': factura.receptor.email})

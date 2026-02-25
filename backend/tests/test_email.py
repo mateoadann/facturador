@@ -218,7 +218,10 @@ class TestEnviarEmailFactura:
         assert resp.status_code == 202
         data = resp.get_json()
         assert 'receptor_email' in data
-        mock_task.delay.assert_called_once_with(str(factura_autorizada.id))
+        mock_task.delay.assert_called_once_with(
+            str(factura_autorizada.id),
+            str(factura_autorizada.tenant_id),
+        )
 
     def test_factura_no_autorizada_falla(self, client, auth_headers, db,
                                          email_config, tenant, facturador, receptor_con_email):
