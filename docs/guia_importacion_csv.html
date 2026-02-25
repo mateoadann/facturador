@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Guía paso a paso - Importar CSV</title>
+  <style>
+    :root {
+      --bg: #0a1020;
+      --panel: #121d3a;
+      --panel-soft: #18274c;
+      --text: #eef3ff;
+      --muted: #b7c2df;
+      --accent: #7fb3ff;
+      --ok: #59d48f;
+      --warn: #ffd166;
+      --err: #ff7b7b;
+      --border: #2a3d73;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Roboto, system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 15% 10%, #1b2f63 0%, #0a1020 40%, #070c18 100%);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+
+    .deck {
+      width: min(1100px, 100%);
+      min-height: min(760px, calc(100vh - 36px));
+      background: rgba(10, 18, 38, 0.85);
+      backdrop-filter: blur(3px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, .35);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(90deg, rgba(127,179,255,.15), rgba(89,212,143,.08));
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+    .small { color: var(--muted); font-size: .9rem; }
+
+    .slides { position: relative; overflow: hidden; }
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: clamp(16px, 3vw, 28px);
+      opacity: 0;
+      transform: translateX(25px);
+      transition: all .25s ease;
+      pointer-events: none;
+      overflow: auto;
+    }
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    h2 { margin: 0 0 10px; font-size: clamp(1.2rem, 2.4vw, 1.8rem); }
+    h3 { margin: 16px 0 8px; font-size: 1.05rem; }
+    p, li { color: var(--muted); font-size: clamp(.98rem, 1.4vw, 1.08rem); }
+    ul, ol { margin-top: 8px; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-top: 10px;
+    }
+
+    .grid { display: grid; gap: 12px; }
+    .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+
+    .chip {
+      display: inline-block;
+      margin: 3px 6px 3px 0;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-soft);
+      color: #dce7ff;
+      font-size: .86rem;
+      line-height: 1.2;
+    }
+
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+
+    .code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      background: #0d1832;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      color: #e7eeff;
+      font-size: .92rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: .95rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px;
+      vertical-align: top;
+      text-align: left;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    th { background: #1a2b55; }
+    tr:last-child td { border-bottom: none; }
+
+    .tool {
+      margin-top: 10px;
+      padding: 12px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: #0f1a35;
+      display: grid;
+      gap: 8px;
+    }
+    input {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 9px 10px;
+      background: #0a142b;
+      color: var(--text);
+      font: inherit;
+    }
+    button {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 9px 12px;
+      background: #1b2f60;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .result {
+      min-height: 22px;
+      border-left: 3px solid var(--accent);
+      padding-left: 8px;
+      color: #d9e6ff;
+      font-size: .95rem;
+    }
+
+    .nav {
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: grid;
+      gap: 10px;
+      background: #0d1731;
+    }
+    .nav-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .controls { display: flex; gap: 8px; }
+    .dots { display: flex; flex-wrap: wrap; gap: 6px; }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #2f467d;
+      border: 1px solid #415fa3;
+    }
+    .dot.active { background: var(--accent); }
+
+    .hint {
+      margin: 0;
+      color: #99a9d4;
+      font-size: .86rem;
+    }
+
+    @media (max-width: 640px) {
+      .deck { min-height: calc(100vh - 20px); }
+      .topbar h1 { font-size: .92rem; }
+      .small { font-size: .82rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-live="polite">
+    <header class="topbar">
+      <h1>Guía simple para importar facturas por CSV</h1>
+      <div class="small" id="slideCounter">Paso 1 de 14</div>
+    </header>
+
+    <section class="slides">
+      <article class="slide active">
+        <h2>Bienvenida 👋</h2>
+        <p>Esta guía está pensada para personas sin perfil técnico. La idea es que puedas aprender paso a paso, de forma clara, cómo preparar un archivo CSV para usar la app.</p>
+        <div class="panel">
+          <h3>¿Qué vas a aprender?</h3>
+          <ul>
+            <li>Qué datos son obligatorios.</li>
+            <li>Cómo escribir fechas y números correctamente.</li>
+            <li>Qué errores son comunes y cómo evitarlos.</li>
+            <li>Qué pasa si el receptor no existe todavía en la app.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 0: ¿De dónde sale el archivo CSV?</h2>
+        <p>Normalmente vas a empezar desde un archivo de Excel (<strong>.xlsx</strong>). El CSV es una versión \"de texto\" de esa planilla para que la app pueda leerla.</p>
+        <div class="panel">
+          <h3>Opción recomendada</h3>
+          <p>Descargá la plantilla Excel desde la app y completala. Después exportala a CSV.</p>
+        </div>
+        <div class="panel">
+          <h3>Cómo exportar bien desde Excel</h3>
+          <ol>
+            <li>Abrí tu archivo de Excel.</li>
+            <li>Dejá visible la hoja que querés importar.</li>
+            <li>Ir a <strong>Archivo → Guardar como</strong>.</li>
+            <li>Elegir formato: <strong>CSV UTF-8 (delimitado por comas)</strong>.</li>
+            <li>Guardá y cerrá.</li>
+          </ol>
+        </div>
+        <div class="panel">
+          <h3>Tip importante para Argentina</h3>
+          <p>En Argentina suele usarse <strong>punto para miles</strong> y <strong>coma para decimales</strong>. Eso puede confundirse con el separador de columnas del CSV.</p>
+          <p><strong>Recomendación práctica:</strong> exportar como CSV UTF-8 delimitado por comas, evitar separador de miles y revisar que cada dato quede en su columna.</p>
+          <p>Si Excel te pregunta por compatibilidad, aceptá guardar como CSV. Después, abrí el CSV rápido y revisá que la primera fila (encabezado) se vea bien.</p>
+          <p class="warn">No uses formatos como .xls, .xlsx o .ods para importar directo: la app espera .csv.</p>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 1: ¿Qué hace la importación?</h2>
+        <p>Al importar el CSV, la app crea un <strong>lote</strong> con facturas en estado <strong>pendiente</strong>. Después, en otro paso, se enviarán a ARCA para autorizar.</p>
+        <div class="grid cols-3">
+          <div class="panel"><h3>1) Subir CSV</h3><p>Desde la pestaña Facturar.</p></div>
+          <div class="panel"><h3>2) Crear lote</h3><p>La app valida y guarda lo correcto.</p></div>
+          <div class="panel"><h3>3) Facturar</h3><p>Se procesa y se ve el progreso en tiempo real.</p></div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 2: Columnas obligatorias</h2>
+        <p>Si falta alguna de estas columnas, la importación falla. En esta guía, también consideramos obligatorias las columnas de ítems para poder generar correctamente el PDF.</p>
+        <div class="panel">
+          <h3>Obligatorias de factura</h3>
+          <div class="code">facturador_cuit, receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto</div>
+        </div>
+        <div class="panel">
+          <h3>Obligatorias de ítems (para comprobante/PDF)</h3>
+          <div class="code">item_descripcion, item_cantidad, item_precio_unitario, item_alicuota_iva_id</div>
+        </div>
+        <p class="err">Si el encabezado no tiene estas columnas, la carga no cumple el formato esperado para generar comprobantes completos.</p>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 3: Columnas opcionales</h2>
+        <p>Estas columnas no siempre son obligatorias, pero ayudan según el tipo de comprobante.</p>
+        <div class="panel">
+          <div class="code">importe_iva, moneda, cotizacion, fecha_desde, fecha_hasta, fecha_vto_pago, cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro</div>
+        </div>
+        <p class="small">Si el CSV trae columnas extra que la app no usa, se descartan automáticamente y no frenan la importación.</p>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 4: Formato de números</h2>
+        <p>La app acepta:</p>
+        <p><span class="chip">12100.50</span> <span class="chip">12100,50</span></p>
+        <p class="warn"><strong>Precaución:</strong> no uses separador de miles. Ejemplo problemático: <code>1.234,56</code>.</p>
+
+        <div class="tool">
+          <label for="decimalInput">Probá un número:</label>
+          <input id="decimalInput" placeholder="Ej: 12100,50 o 12100.50" />
+          <button type="button" onclick="validarDecimal()">Validar número</button>
+          <div id="decimalOut" class="result"></div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 5: Formato de fechas</h2>
+        <p>La app acepta solo estos 2 formatos:</p>
+        <ul>
+          <li><strong>AAAA-MM-DD</strong> (ejemplo: 2026-02-25)</li>
+          <li><strong>DD/MM/AAAA</strong> (ejemplo: 25/02/2026)</li>
+        </ul>
+        <p class="err">Si no respetás uno de esos dos, la importación marca error.</p>
+
+        <div class="tool">
+          <label for="dateInput">Probá una fecha:</label>
+          <input id="dateInput" placeholder="Ej: 2026-02-25 o 25/02/2026" />
+          <button type="button" onclick="validarFecha()">Validar fecha</button>
+          <div id="dateOut" class="result"></div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 6: ¿Qué pasa si el receptor no existe?</h2>
+        <p>La app lo crea automáticamente con datos básicos. Eso evita que la importación se corte.</p>
+        <div class="panel">
+          <ul>
+            <li>Se guarda con CUIT y un nombre básico.</li>
+            <li class="warn">Después, al facturar, puede fallar si ese CUIT no es válido en ARCA o si la condición IVA no coincide.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 7: Tipos de comprobante y reglas</h2>
+        <p class="warn"><strong>Importante:</strong> en el CSV tenés que poner el <strong>ID numérico</strong> del comprobante. Ya no se usa "FA", "FB", etc.</p>
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Tipo de comprobante</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td>Factura A</td></tr>
+            <tr><td>2</td><td>Nota de Débito A</td></tr>
+            <tr><td>3</td><td>Nota de Crédito A</td></tr>
+            <tr><td>6</td><td>Factura B</td></tr>
+            <tr><td>7</td><td>Nota de Débito B</td></tr>
+            <tr><td>8</td><td>Nota de Crédito B</td></tr>
+            <tr><td>11</td><td>Factura C</td></tr>
+            <tr><td>12</td><td>Nota de Débito C</td></tr>
+            <tr><td>13</td><td>Nota de Crédito C</td></tr>
+            <tr><td>51</td><td>Factura M</td></tr>
+            <tr><td>52</td><td>Nota de Débito M</td></tr>
+            <tr><td>53</td><td>Nota de Crédito M</td></tr>
+          </tbody>
+        </table>
+        <h3>Reglas prácticas rápidas</h3>
+        <table>
+          <thead>
+            <tr><th>Caso</th><th>Regla práctica</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Factura A / M</td>
+              <td>Normalmente con IVA discriminado.</td>
+            </tr>
+            <tr>
+              <td>Factura B / C sin IVA discriminado</td>
+              <td>Usar <code>importe_iva=0</code> y <code>importe_neto=importe_total</code>.</td>
+            </tr>
+            <tr>
+              <td>Notas (débito/crédito)</td>
+              <td>Completar sí o sí <code>cbte_asoc_tipo</code>, <code>cbte_asoc_pto_vta</code> y <code>cbte_asoc_nro</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 8: Filas vs facturas (esto confunde mucho)</h2>
+        <p>La app puede <strong>juntar varias filas</strong> en una sola factura si comparten los mismos datos principales.</p>
+        <div class="panel">
+          <p>Ejemplo: si repetís misma factura y solo cambiás el ítem, eso se toma como <strong>una factura con varias líneas</strong>.</p>
+          <p class="warn">Por eso 300 filas no siempre significa 300 facturas.</p>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 9: Errores típicos y solución rápida</h2>
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>"Faltan columnas obligatorias"</h3>
+            <p>Revisar encabezado CSV.</p>
+          </div>
+          <div class="panel">
+            <h3>"Fecha inválida"</h3>
+            <p>Usar solo AAAA-MM-DD o DD/MM/AAAA.</p>
+          </div>
+          <div class="panel">
+            <h3>"Facturador no encontrado"</h3>
+            <p>Verificar CUIT y que esté activo en el entorno correcto.</p>
+          </div>
+          <div class="panel">
+            <h3>Errores ARCA luego de importar</h3>
+            <p>No suelen ser de CSV: suelen ser reglas fiscales del comprobante.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>Paso 10: Ejemplo de archivo mínimo</h2>
+        <p>Podés copiar esta base:</p>
+        <div class="code">facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda,cotizacion
+20442030147,20278955770,1,1,2026-02-25,12100,10000,2100,PES,1</div>
+        <div class="panel">
+          <h3>Checklist final</h3>
+          <ul>
+            <li>✅ Encabezado correcto.</li>
+            <li>✅ Fechas válidas.</li>
+            <li>✅ Números sin separador de miles.</li>
+            <li>✅ Datos de nota asociados si corresponde.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="slide">
+        <h2>¡Listo! 🎉</h2>
+        <p>Ya tenés los puntos más importantes para importar CSV sin dolor de cabeza.</p>
+        <div class="panel">
+          <p><strong>Recomendación:</strong> empezá con 5 a 10 facturas de prueba, validá resultados y recién después subí lotes grandes.</p>
+          <p>Si querés, esta guía se puede extender con ejemplos reales de tu negocio.</p>
+        </div>
+      </article>
+    </section>
+
+    <footer class="nav">
+      <div class="nav-row">
+        <p class="hint">Tip: podés usar las flechas del teclado ⬅️ ➡️ para navegar.</p>
+        <div class="controls">
+          <button type="button" id="prevBtn">Anterior</button>
+          <button type="button" id="nextBtn">Siguiente</button>
+        </div>
+      </div>
+      <div class="dots" id="dots"></div>
+    </footer>
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const counter = document.getElementById('slideCounter');
+    const dotsWrap = document.getElementById('dots');
+    let idx = 0;
+
+    function renderDots() {
+      dotsWrap.innerHTML = '';
+      slides.forEach((_, i) => {
+        const d = document.createElement('span');
+        d.className = 'dot' + (i === idx ? ' active' : '');
+        d.title = 'Ir al paso ' + (i + 1);
+        d.addEventListener('click', () => goTo(i));
+        dotsWrap.appendChild(d);
+      });
+    }
+
+    function goTo(next) {
+      idx = Math.max(0, Math.min(slides.length - 1, next));
+      slides.forEach((s, i) => s.classList.toggle('active', i === idx));
+      counter.textContent = `Paso ${idx + 1} de ${slides.length}`;
+      prevBtn.disabled = idx === 0;
+      nextBtn.disabled = idx === slides.length - 1;
+      renderDots();
+    }
+
+    prevBtn.addEventListener('click', () => goTo(idx - 1));
+    nextBtn.addEventListener('click', () => goTo(idx + 1));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') goTo(idx + 1);
+      if (e.key === 'ArrowLeft') goTo(idx - 1);
+    });
+
+    function validarDecimal() {
+      const raw = document.getElementById('decimalInput').value.trim();
+      const out = document.getElementById('decimalOut');
+      if (!raw) { out.textContent = 'Ingresá un número para validar.'; return; }
+      const normalized = raw.replace(',', '.');
+      const ok = /^-?\d+(\.\d+)?$/.test(normalized);
+      if (ok) out.innerHTML = '<span class="ok">✔ Formato válido</span>. Se leería como <strong>' + normalized + '</strong>.';
+      else out.innerHTML = '<span class="err">✖ Formato inválido</span>. Revisá que no tenga separador de miles.';
+    }
+
+    function validarFecha() {
+      const raw = document.getElementById('dateInput').value.trim();
+      const out = document.getElementById('dateOut');
+      if (!raw) { out.textContent = 'Ingresá una fecha para validar.'; return; }
+      const iso = /^\d{4}-\d{2}-\d{2}$/;
+      const lat = /^\d{2}\/\d{2}\/\d{4}$/;
+      if (iso.test(raw) || lat.test(raw)) out.innerHTML = '<span class="ok">✔ Formato válido</span> para importar.';
+      else out.innerHTML = '<span class="err">✖ Formato inválido</span>. Usá AAAA-MM-DD o DD/MM/AAAA.';
+    }
+
+    goTo(0);
+  </script>
+</body>
+</html>
