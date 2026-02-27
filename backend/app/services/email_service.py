@@ -1,5 +1,6 @@
 import smtplib
 import logging
+from types import SimpleNamespace
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
@@ -8,6 +9,12 @@ from email import encoders
 from .encryption import decrypt_certificate
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PREVIEW_SAMPLE_DATA = {
+    'facturador': 'Empresa Demo SRL',
+    'receptor': 'Cliente Ejemplo SA',
+    'comprobante': '00001-00001234',
+}
 
 
 def get_smtp_connection(config):
@@ -151,6 +158,40 @@ def send_test_email(config, to_email):
     send_email(config, to_email, subject, body)
 
 
+def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None,
+                        from_name=None, sample_data=None):
+    """Construye una vista previa del email usando la misma logica de produccion."""
+    normalized_sample_data = dict(DEFAULT_PREVIEW_SAMPLE_DATA)
+    if sample_data:
+        normalized_sample_data.update(sample_data)
+
+    config = SimpleNamespace(
+        email_asunto=(email_asunto or '').strip() or None,
+        email_mensaje=(email_mensaje or '').strip() or None,
+        email_saludo=(email_saludo or '').strip() or None,
+    )
+
+    subject = _build_subject(
+        config,
+        normalized_sample_data['comprobante'],
+        normalized_sample_data['facturador'],
+    )
+    html = _build_comprobante_email_body_from_data(
+        receptor_nombre=normalized_sample_data['receptor'],
+        facturador_nombre=normalized_sample_data['facturador'],
+        config=config,
+    )
+
+    return {
+        'subject': subject,
+        'html': html,
+        'sample_data': {
+            **normalized_sample_data,
+            'from_name': (from_name or '').strip() or None,
+        },
+    }
+
+
 def _build_subject(config, comprobante_str, facturador_nombre):
     """Construye el asunto del email usando config o default."""
     if config.email_asunto:
@@ -165,6 +206,16 @@ def _build_subject(config, comprobante_str, facturador_nombre):
 def _build_comprobante_email_body(factura, facturador_nombre, config):
     """Construye el HTML del cuerpo del email de comprobante."""
     receptor_nombre = factura.receptor.razon_social if factura.receptor else ''
+
+    return _build_comprobante_email_body_from_data(
+        receptor_nombre=receptor_nombre,
+        facturador_nombre=facturador_nombre,
+        config=config,
+    )
+
+
+def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, config):
+    """Construye el HTML del cuerpo del email de comprobante."""
 
     mensaje = config.email_mensaje if config.email_mensaje else (
         'Adjunto encontrará el comprobante electrónico correspondiente.'

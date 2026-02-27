@@ -203,6 +203,44 @@ class TestEmailTestSend:
         mock_send.assert_called_once()
 
 
+class TestEmailPreview:
+    """Tests para POST /api/email/preview."""
+
+    def test_preview_devuelve_subject_y_html(self, client, auth_headers):
+        resp = client.post('/api/email/preview', headers=auth_headers, json={
+            'email_asunto': 'Factura {comprobante} - {facturador}',
+            'email_mensaje': 'Linea 1\nLinea 2',
+            'email_saludo': 'Saludos',
+        })
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['subject'] == 'Factura 00001-00001234 - Empresa Demo SRL'
+        assert '<html>' in data['html']
+        assert data['sample_data']['facturador'] == 'Empresa Demo SRL'
+        assert data['sample_data']['receptor'] == 'Cliente Ejemplo SA'
+        assert data['sample_data']['comprobante'] == '00001-00001234'
+
+    def test_preview_reemplaza_placeholders_y_saltos(self, client, auth_headers):
+        resp = client.post('/api/email/preview', headers=auth_headers, json={
+            'email_asunto': 'Comprobante {comprobante} de {facturador}',
+            'email_mensaje': 'Primer renglon\nSegundo renglon',
+        })
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['subject'] == 'Comprobante 00001-00001234 de Empresa Demo SRL'
+        assert '<p>Primer renglon<br>Segundo renglon</p>' in data['html']
+
+    def test_operator_no_puede_ver_preview(self, client, operator_headers):
+        resp = client.post('/api/email/preview', headers=operator_headers, json={})
+        assert resp.status_code == 403
+
+    def test_viewer_no_puede_ver_preview(self, client, viewer_headers):
+        resp = client.post('/api/email/preview', headers=viewer_headers, json={})
+        assert resp.status_code == 403
+
+
 class TestEnviarEmailFactura:
     """Tests para POST /api/facturas/:id/enviar-email."""
 

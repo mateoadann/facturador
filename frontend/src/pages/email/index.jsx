@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Wifi, Send, Loader2 } from 'lucide-react'
+import { Save, Wifi, Send, Loader2, Eye } from 'lucide-react'
 import { api } from '@/api/client'
 import { toast } from '@/stores/toastStore'
 import { Card } from '@/components/ui'
 import { Button, Input, Badge, Checkbox } from '@/components/ui'
+import EmailPreviewModal from './EmailPreviewModal'
 
 function Email() {
   const queryClient = useQueryClient()
@@ -22,6 +23,8 @@ function Email() {
     email_saludo: '',
   })
   const [testEmail, setTestEmail] = useState('')
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [previewPayload, setPreviewPayload] = useState(null)
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['email-config'],
@@ -109,6 +112,16 @@ function Email() {
       return
     }
     testSendMutation.mutate({ to_email: testEmail })
+  }
+
+  const handleOpenPreview = () => {
+    setPreviewPayload({
+      email_asunto: formData.email_asunto,
+      email_mensaje: formData.email_mensaje,
+      email_saludo: formData.email_saludo,
+      from_name: formData.from_name,
+    })
+    setIsPreviewOpen(true)
   }
 
   if (isLoading) {
@@ -273,7 +286,14 @@ function Email() {
             />
           </div>
 
-          <div className="mt-6">
+          <div className="mt-6 flex items-center gap-3">
+            <Button
+              variant="secondary"
+              icon={Eye}
+              onClick={handleOpenPreview}
+            >
+              Vista previa
+            </Button>
             <Button
               icon={Save}
               onClick={handleSave}
@@ -315,6 +335,12 @@ function Email() {
           </div>
         </Card>
       )}
+
+      <EmailPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        previewPayload={previewPayload}
+      />
     </div>
   )
 }
