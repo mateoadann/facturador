@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Download, Loader2, Mail, MailX, Send } from 'lucide-react'
+import { Download, Loader2, Mail, MailX, Send, SlidersHorizontal } from 'lucide-react'
 import { api } from '@/api/client'
 import {
   Button,
   Badge,
   ErrorBadgeInfo,
-  Input,
   Progress,
-  Select,
   Table,
   TableHeader,
   TableBody,
@@ -23,12 +21,16 @@ import { toast } from '@/stores/toastStore'
 import { useDownloadsStore } from '@/stores/downloadsStore'
 import BulkEmailModal from './BulkEmailModal'
 import BulkPdfDownloadModal from './BulkPdfDownloadModal'
+import FacturasFiltersSidebar from './FacturasFiltersSidebar'
 
 function Facturas() {
   const queryClient = useQueryClient()
   const [filters, setFilters] = useState({
     estadoVista: 'finalizados',
     facturador_id: '',
+    lote_ids: [],
+    receptor_ids: [],
+    tipo_comprobantes: [],
     fecha_desde: '',
     fecha_hasta: '',
     page: 1,
@@ -37,6 +39,7 @@ function Facturas() {
   const [sendingEmailId, setSendingEmailId] = useState(null)
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
   const [isBulkPdfModalOpen, setIsBulkPdfModalOpen] = useState(false)
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [emailTaskId, setEmailTaskId] = useState(null)
   const canSendEmail = usePermission('email:enviar')
   const canDownloadComprobante = usePermission('facturas:comprobante')
@@ -55,6 +58,21 @@ function Facturas() {
       Object.keys(params).forEach((key) => {
         if (!params[key]) delete params[key]
       })
+      if (Array.isArray(params.lote_ids) && params.lote_ids.length > 0) {
+        params.lote_ids = params.lote_ids.join(',')
+      } else {
+        delete params.lote_ids
+      }
+      if (Array.isArray(params.receptor_ids) && params.receptor_ids.length > 0) {
+        params.receptor_ids = params.receptor_ids.join(',')
+      } else {
+        delete params.receptor_ids
+      }
+      if (Array.isArray(params.tipo_comprobantes) && params.tipo_comprobantes.length > 0) {
+        params.tipo_comprobantes = params.tipo_comprobantes.join(',')
+      } else {
+        delete params.tipo_comprobantes
+      }
       const response = await api.facturas.list(params)
       return response.data
     },
@@ -75,6 +93,22 @@ function Facturas() {
       return response.data
     },
     enabled: canSendEmail || canDownloadComprobante,
+  })
+
+  const { data: lotesFiltersData } = useQuery({
+    queryKey: ['lotes', { per_page: 200 }],
+    queryFn: async () => {
+      const response = await api.lotes.list({ per_page: 200 })
+      return response.data
+    },
+  })
+
+  const { data: receptoresData } = useQuery({
+    queryKey: ['receptores', { per_page: 300 }],
+    queryFn: async () => {
+      const response = await api.receptores.list({ per_page: 300 })
+      return response.data
+    },
   })
 
   const { data: emailJobStatus } = useJobStatus(emailTaskId, {
@@ -133,6 +167,18 @@ function Facturas() {
   const facturas = data?.items || []
   const facturadores = facturadoresData?.items || []
   const lotes = lotesData?.items || []
+  const lotesFiltros = lotesFiltersData?.items || []
+  const receptores = receptoresData?.items || []
+
+  const activeFiltersCount = [
+    filters.estadoVista !== 'finalizados',
+    !!filters.facturador_id,
+    filters.lote_ids.length > 0,
+    filters.receptor_ids.length > 0,
+    filters.tipo_comprobantes.length > 0,
+    !!filters.fecha_desde,
+    !!filters.fecha_hasta,
+  ].filter(Boolean).length
 
   const getEstadoBadge = (estado, factura) => {
     if (estado === 'error') {
@@ -140,6 +186,7 @@ function Facturas() {
         <ErrorBadgeInfo
           errorCodigo={factura?.error_codigo}
           errorMensaje={factura?.error_mensaje}
+          floating
         />
       )
     }
@@ -247,56 +294,16 @@ function Facturas() {
         />
       )}
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-4">
-        <Select
-          label="Estado"
-          value={filters.estadoVista}
-          onChange={(e) => setFilters({ ...filters, estadoVista: e.target.value, page: 1 })}
-          className="w-40"
-        >
-          <option value="finalizados">Todos finalizados</option>
-          <option value="autorizado">Autorizado</option>
-          <option value="error">Error</option>
-        </Select>
-
-        <Select
-          label="Facturador"
-          value={filters.facturador_id}
-          onChange={(e) => setFilters({ ...filters, facturador_id: e.target.value, page: 1 })}
-          className="w-48"
-        >
-          <option value="">Todos</option>
-          {facturadores.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.razon_social}
-            </option>
-          ))}
-        </Select>
-
-        <Input
-          label="Desde"
-          type="date"
-          value={filters.fecha_desde}
-          onChange={(e) => setFilters({ ...filters, fecha_desde: e.target.value, page: 1 })}
-          className="w-40"
-        />
-
-        <Input
-          label="Hasta"
-          type="date"
-          value={filters.fecha_hasta}
-          onChange={(e) => setFilters({ ...filters, fecha_hasta: e.target.value, page: 1 })}
-          className="w-40"
-        />
-
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Button
           variant="secondary"
-          onClick={() => setFilters({ estadoVista: 'finalizados', facturador_id: '', fecha_desde: '', fecha_hasta: '', page: 1 })}
+          icon={SlidersHorizontal}
+          onClick={() => setIsFiltersOpen(true)}
         >
-          Limpiar
+          Filtros{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}
         </Button>
 
+        <div className="flex flex-wrap items-center gap-3">
         {canSendEmail && (
           <Button
             variant="secondary"
@@ -318,6 +325,7 @@ function Facturas() {
             Descarga PDF de Lotes
           </Button>
         )}
+        </div>
       </div>
 
       {/* Table */}
@@ -496,6 +504,16 @@ function Facturas() {
         lotes={lotes}
         onConfirm={({ loteId }) => generarZipLoteMutation.mutate({ loteId })}
         isSubmitting={generarZipLoteMutation.isPending}
+      />
+
+      <FacturasFiltersSidebar
+        isOpen={isFiltersOpen}
+        onClose={() => setIsFiltersOpen(false)}
+        filters={filters}
+        onApply={setFilters}
+        facturadores={facturadores}
+        lotes={lotesFiltros}
+        receptores={receptores}
       />
     </div>
   )
