@@ -13,6 +13,7 @@ import ConsultarComprobantes from './pages/consultar-comprobantes'
 import Usuarios from './pages/usuarios'
 import Auditoria from './pages/auditoria'
 import Email from './pages/email'
+import ZipDownloadsWatcher from './components/downloads/ZipDownloadsWatcher'
 
 function PrivateRoute({ children }) {
   const accessToken = useAuthStore((s) => s.accessToken)
@@ -40,6 +41,7 @@ function App() {
   return (
     <BrowserRouter>
       <ToastContainer />
+      <ZipDownloadsWatcher />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route

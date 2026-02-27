@@ -1,6 +1,8 @@
 import io
 import pytest
 from uuid import UUID
+from datetime import date
+from decimal import Decimal
 from app.models import Lote, Factura, Receptor
 
 
@@ -482,3 +484,44 @@ class TestUpdateFactura:
         assert payload['importe_neto'] == 1000.0
         assert payload['importe_iva'] == 0.0
         assert payload['importe_total'] == 1000.0
+
+
+class TestComprobantePdf:
+    def test_comprobante_pdf_usa_filename_estandar(self, client, auth_headers, facturador, receptor, db, monkeypatch):
+        lote = Lote(
+            tenant_id=facturador.tenant_id,
+            etiqueta='Lote PDF',
+            tipo='factura',
+            estado='completado',
+            total_facturas=1,
+            facturas_ok=1,
+        )
+        db.session.add(lote)
+        db.session.flush()
+
+        factura = Factura(
+            tenant_id=facturador.tenant_id,
+            lote_id=lote.id,
+            facturador_id=facturador.id,
+            receptor_id=receptor.id,
+            tipo_comprobante=6,
+            concepto=1,
+            punto_venta=1,
+            numero_comprobante=42,
+            fecha_emision=date(2026, 1, 15),
+            importe_total=Decimal('1210.00'),
+            importe_neto=Decimal('1000.00'),
+            importe_iva=Decimal('210.00'),
+            cae='12345678901234',
+            estado='autorizado',
+        )
+        db.session.add(factura)
+        db.session.commit()
+
+        monkeypatch.setattr('app.api.facturas._get_or_render_comprobante_html', lambda *_args, **_kwargs: '<html></html>')
+        monkeypatch.setattr('app.services.comprobante_pdf.html_to_pdf_bytes', lambda _html: b'%PDF-test')
+
+        response = client.get(f'/api/facturas/{factura.id}/comprobante-pdf', headers=auth_headers)
+        assert response.status_code == 200
+        assert response.headers['Content-Type'] == 'application/pdf'
+        assert '20123456789_006_00001_00000042.pdf' in response.headers['Content-Disposition']

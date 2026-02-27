@@ -11,6 +11,7 @@ from ..services.comprobante_rules import (
     es_comprobante_tipo_c,
     normalizar_importes_para_tipo_c,
 )
+from ..services.comprobante_filename import build_comprobante_pdf_filename
 from ..services.csv_parser import parse_csv
 from ..services.audit import log_action
 from ..utils import permission_required
@@ -225,9 +226,7 @@ def get_comprobante_pdf(factura_id):
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
         return jsonify({'error': f'No se pudo generar PDF: {str(exc)}'}), 400
 
-    punto_venta = int(factura.punto_venta or 0)
-    numero = int(factura.numero_comprobante or 0)
-    filename = f'comprobante-{punto_venta:05d}-{numero:08d}.pdf'
+    filename = build_comprobante_pdf_filename(factura)
 
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'

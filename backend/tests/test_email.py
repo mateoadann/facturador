@@ -437,3 +437,15 @@ class TestEmailServiceUnit:
 
         assert result['success'] is False
         assert 'inválidas' in result['error'].lower() or 'invalid' in result['error'].lower()
+
+    @patch('app.services.email_service.send_email')
+    @patch('app.services.comprobante_pdf.html_to_pdf_bytes', return_value=b'%PDF-test')
+    @patch('app.services.comprobante_renderer.render_comprobante_html', return_value='<html></html>')
+    def test_send_comprobante_email_usa_filename_estandar(self, _mock_html, _mock_pdf, mock_send_email, app, factura_autorizada, email_config):
+        with app.app_context():
+            from app.services.email_service import send_comprobante_email
+            send_comprobante_email(factura_autorizada)
+
+        attachments = mock_send_email.call_args.kwargs['attachments']
+        attachment_filename = attachments[0][0]
+        assert attachment_filename == '20123456789_001_00001_00000001.pdf'
