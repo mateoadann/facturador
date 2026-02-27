@@ -175,6 +175,77 @@ class TestListFacturas:
         assert response.status_code == 400
         assert 'Estados inválidos' in response.get_json()['error']
 
+    def test_list_with_lote_ids_filter(self, client, auth_headers, facturador, receptor):
+        csv_1 = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        import_1 = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={'file': (io.BytesIO(csv_1.encode('utf-8')), 'lote1.csv'), 'etiqueta': 'Lote A', 'tipo': 'factura'},
+            content_type='multipart/form-data'
+        )
+        lote_1_id = import_1.get_json()['lote']['id']
+
+        csv_2 = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},6,1,2026-01-16,24200.00,20000.00"""
+        client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={'file': (io.BytesIO(csv_2.encode('utf-8')), 'lote2.csv'), 'etiqueta': 'Lote B', 'tipo': 'factura'},
+            content_type='multipart/form-data'
+        )
+
+        response = client.get(f'/api/facturas?lote_ids={lote_1_id}', headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert len(payload['items']) == 1
+        assert payload['items'][0]['lote_id'] == lote_1_id
+
+    def test_list_with_receptor_ids_and_tipo_comprobantes_filters(self, client, auth_headers, facturador, receptor, db):
+        receptor_2 = Receptor(
+            tenant_id=receptor.tenant_id,
+            doc_tipo=80,
+            doc_nro='30777888999',
+            razon_social='Receptor Dos SA',
+            activo=True,
+        )
+        db.session.add(receptor_2)
+        db.session.commit()
+
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00
+{facturador.cuit},{receptor_2.doc_nro},6,1,2026-01-16,24200.00,20000.00"""
+
+        client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={'file': (io.BytesIO(csv_content.encode('utf-8')), 'filtros.csv'), 'etiqueta': 'Lote filtros multi', 'tipo': 'factura'},
+            content_type='multipart/form-data'
+        )
+
+        response = client.get(
+            f'/api/facturas?receptor_ids={receptor.id}&tipo_comprobantes=1',
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert len(payload['items']) == 1
+        assert payload['items'][0]['receptor_id'] == str(receptor.id)
+        assert payload['items'][0]['tipo_comprobante'] == 1
+
+    def test_list_with_invalid_multi_filters(self, client, auth_headers):
+        resp_lotes = client.get('/api/facturas?lote_ids=no-es-uuid', headers=auth_headers)
+        assert resp_lotes.status_code == 400
+        assert 'lote_ids inválido' in resp_lotes.get_json()['error']
+
+        resp_receptores = client.get('/api/facturas?receptor_ids=no-es-uuid', headers=auth_headers)
+        assert resp_receptores.status_code == 400
+        assert 'receptor_ids inválido' in resp_receptores.get_json()['error']
+
+        resp_tipos = client.get('/api/facturas?tipo_comprobantes=1,abc', headers=auth_headers)
+        assert resp_tipos.status_code == 400
+        assert 'tipo_comprobantes inválido' in resp_tipos.get_json()['error']
+
 
 class TestBulkDeleteFacturas:
     def test_bulk_delete(self, client, auth_headers, facturador, receptor):

@@ -26,10 +26,13 @@ def list_facturas():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     lote_id = request.args.get('lote_id')
+    lote_ids = request.args.get('lote_ids')
     estado = request.args.get('estado')
     facturador_id = request.args.get('facturador_id')
     receptor_id = request.args.get('receptor_id')
+    receptor_ids = request.args.get('receptor_ids')
     tipo_comprobante = request.args.get('tipo_comprobante', type=int)
+    tipo_comprobantes = request.args.get('tipo_comprobantes')
     fecha_desde = request.args.get('fecha_desde')
     fecha_hasta = request.args.get('fecha_hasta')
     estados = request.args.get('estados')
@@ -37,7 +40,14 @@ def list_facturas():
     query = Factura.query.filter_by(tenant_id=g.tenant_id)
     allowed_estados = {'autorizado', 'error', 'pendiente', 'borrador'}
 
-    if lote_id:
+    if lote_ids:
+        lote_ids_list = [item.strip() for item in lote_ids.split(',') if item.strip()]
+        try:
+            lote_uuid_list = [UUID(item) for item in lote_ids_list]
+        except ValueError:
+            return jsonify({'error': 'lote_ids inválido'}), 400
+        query = query.filter(Factura.lote_id.in_(lote_uuid_list))
+    elif lote_id:
         query = query.filter_by(lote_id=lote_id)
     if estados:
         estados_list = [item.strip() for item in estados.split(',') if item.strip()]
@@ -53,9 +63,23 @@ def list_facturas():
         query = query.filter_by(estado=estado)
     if facturador_id:
         query = query.filter_by(facturador_id=facturador_id)
-    if receptor_id:
+    if receptor_ids:
+        receptor_ids_list = [item.strip() for item in receptor_ids.split(',') if item.strip()]
+        try:
+            receptor_uuid_list = [UUID(item) for item in receptor_ids_list]
+        except ValueError:
+            return jsonify({'error': 'receptor_ids inválido'}), 400
+        query = query.filter(Factura.receptor_id.in_(receptor_uuid_list))
+    elif receptor_id:
         query = query.filter_by(receptor_id=receptor_id)
-    if tipo_comprobante:
+    if tipo_comprobantes:
+        try:
+            tipos_list = [int(item.strip()) for item in tipo_comprobantes.split(',') if item.strip()]
+        except ValueError:
+            return jsonify({'error': 'tipo_comprobantes inválido'}), 400
+        if tipos_list:
+            query = query.filter(Factura.tipo_comprobante.in_(tipos_list))
+    elif tipo_comprobante:
         query = query.filter_by(tipo_comprobante=tipo_comprobante)
     if fecha_desde:
         query = query.filter(Factura.fecha_emision >= fecha_desde)
