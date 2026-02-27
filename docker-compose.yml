@@ -41,6 +41,7 @@ services:
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-caracteres-exactos-para-fern}
       - ARCA_AMBIENTE=${ARCA_AMBIENTE:-testing}
+      - ARCA_TA_CACHE_DIR=/var/lib/arca_ta_cache
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
     depends_on:
       postgres:
@@ -49,6 +50,8 @@ services:
         condition: service_healthy
     networks:
       - internal
+    volumes:
+      - facturador_arca_ta_cache:/var/lib/arca_ta_cache
 
   worker:
     build:
@@ -63,6 +66,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-32-caracteres-exactos-para-fern}
       - ARCA_AMBIENTE=${ARCA_AMBIENTE:-testing}
+      - ARCA_TA_CACHE_DIR=/var/lib/arca_ta_cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,9 +74,12 @@ services:
         condition: service_healthy
     networks:
       - internal
+    volumes:
+      - facturador_arca_ta_cache:/var/lib/arca_ta_cache
 
 volumes:
   facturador_postgres_data:
+  facturador_arca_ta_cache:
 
 networks:
   internal:
