@@ -136,7 +136,13 @@ export const api = {
     facturar: (id, data) => client.post(`/lotes/${id}/facturar`, data),
     sendEmails: (id, data) => client.post(`/lotes/${id}/enviar-emails`, data),
     emailPreview: (id) => client.get(`/lotes/${id}/email-preview`),
+    comprobantesZipPreview: (id) => client.get(`/lotes/${id}/comprobantes-zip-preview`),
+    generarComprobantesZip: (id) => client.post(`/lotes/${id}/comprobantes-zip`),
     delete: (id) => client.delete(`/lotes/${id}`),
+  },
+
+  downloads: {
+    getByTask: (taskId) => client.get(`/downloads/${taskId}`, { responseType: 'blob' }),
   },
 
   // Jobs

@@ -202,6 +202,78 @@ class TestFacturarLote:
         assert str(factura.facturador_id) == str(alt_facturador.id)
         assert factura.punto_venta == alt_facturador.punto_venta
 
+
+class TestComprobantesZipLote:
+    def _create_lote_con_factura_autorizada(self, client, auth_headers, facturador, receptor, db):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},6,1,2026-01-15,1210.00,1000.00"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote zip',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = UUID(import_response.get_json()['lote']['id'])
+
+        factura = Factura.query.filter_by(lote_id=lote_id).first()
+        factura.estado = 'autorizado'
+        factura.numero_comprobante = 42
+        factura.cae = '12345678901234'
+        db.session.commit()
+        return lote_id
+
+    def test_preview_comprobantes_zip(self, client, auth_headers, facturador, receptor, db):
+        lote_id = self._create_lote_con_factura_autorizada(client, auth_headers, facturador, receptor, db)
+
+        response = client.get(f'/api/lotes/{lote_id}/comprobantes-zip-preview', headers=auth_headers)
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['autorizados'] == 1
+
+    def test_generar_comprobantes_zip_encola_tarea(self, client, auth_headers, facturador, receptor, db, monkeypatch):
+        lote_id = self._create_lote_con_factura_autorizada(client, auth_headers, facturador, receptor, db)
+
+        class _Task:
+            id = 'task-zip-1'
+
+        def _fake_delay(*_args, **_kwargs):
+            return _Task()
+
+        monkeypatch.setattr('app.tasks.downloads.generar_comprobantes_zip_lote.delay', _fake_delay)
+
+        response = client.post(f'/api/lotes/{lote_id}/comprobantes-zip', headers=auth_headers)
+        assert response.status_code == 202
+        payload = response.get_json()
+        assert payload['task_id'] == 'task-zip-1'
+        assert payload['autorizados'] == 1
+
+    def test_generar_comprobantes_zip_rechaza_sin_autorizadas(self, client, auth_headers, facturador, receptor):
+        csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+
+        import_response = client.post(
+            '/api/facturas/import',
+            headers=auth_headers,
+            data={
+                'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
+                'etiqueta': 'Lote sin autorizadas',
+                'tipo': 'factura',
+            },
+            content_type='multipart/form-data'
+        )
+        assert import_response.status_code == 201
+        lote_id = import_response.get_json()['lote']['id']
+
+        response = client.post(f'/api/lotes/{lote_id}/comprobantes-zip', headers=auth_headers)
+        assert response.status_code == 400
+        assert 'autorizados' in response.get_json()['error'].lower()
+
     def test_facturar_lote_rejects_facturador_without_certificates(self, client, auth_headers, facturador, receptor, db):
         csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
 {facturador.cuit},{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""

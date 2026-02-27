@@ -339,6 +339,73 @@ def email_preview_lote(lote_id):
     }), 200
 
 
+@lotes_bp.route('/<uuid:lote_id>/comprobantes-zip-preview', methods=['GET'])
+@permission_required('facturas:comprobante')
+def comprobantes_zip_preview(lote_id):
+    """Obtener cantidad de comprobantes autorizados para ZIP por lote."""
+    lote = Lote.query.filter_by(
+        id=lote_id,
+        tenant_id=g.tenant_id,
+    ).first()
+
+    if not lote:
+        return jsonify({'error': 'Lote no encontrado'}), 404
+
+    autorizados = Factura.query.filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.lote_id == lote_id,
+        Factura.estado == 'autorizado',
+    ).count()
+
+    return jsonify({
+        'lote_id': str(lote.id),
+        'autorizados': autorizados,
+    }), 200
+
+
+@lotes_bp.route('/<uuid:lote_id>/comprobantes-zip', methods=['POST'])
+@permission_required('facturas:comprobante')
+def generar_comprobantes_zip(lote_id):
+    """Encola la generacion async de ZIP de comprobantes autorizados de un lote."""
+    lote = Lote.query.filter_by(
+        id=lote_id,
+        tenant_id=g.tenant_id,
+    ).first()
+
+    if not lote:
+        return jsonify({'error': 'Lote no encontrado'}), 404
+
+    autorizados = Factura.query.filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.lote_id == lote_id,
+        Factura.estado == 'autorizado',
+    ).count()
+
+    if autorizados == 0:
+        return jsonify({'error': 'El lote no tiene comprobantes autorizados para descargar'}), 400
+
+    from ..tasks.downloads import generar_comprobantes_zip_lote
+    task = generar_comprobantes_zip_lote.delay(str(lote.id), str(g.tenant_id))
+
+    log_action(
+        'facturas:comprobante',
+        recurso='lote',
+        recurso_id=lote.id,
+        detalle={
+            'accion': 'descarga_zip',
+            'task_id': task.id,
+            'autorizados': autorizados,
+        }
+    )
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Generacion de ZIP encolada',
+        'task_id': task.id,
+        'autorizados': autorizados,
+    }), 202
+
+
 @lotes_bp.route('/<uuid:lote_id>', methods=['DELETE'])
 @permission_required('facturas:eliminar')
 def delete_lote(lote_id):

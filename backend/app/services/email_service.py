@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from email import encoders
 
 from .encryption import decrypt_certificate
+from .comprobante_filename import build_comprobante_pdf_filename
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ def send_comprobante_email(factura):
     # Construir nombre del archivo
     punto_venta = int(factura.punto_venta or 0)
     numero = int(factura.numero_comprobante or 0)
-    filename = f'comprobante-{punto_venta:05d}-{numero:08d}.pdf'
+    filename = build_comprobante_pdf_filename(factura)
 
     # Construir asunto y body usando config personalizable
     facturador_nombre = factura.facturador.razon_social if factura.facturador else 'Facturador'
