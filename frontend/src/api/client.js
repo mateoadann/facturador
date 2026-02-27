@@ -176,5 +176,6 @@ export const api = {
     updateConfig: (data) => client.put('/email/config', data),
     testConnection: () => client.post('/email/test'),
     testSend: (data) => client.post('/email/test-send', data),
+    preview: (data) => client.post('/email/preview', data),
   },
 }

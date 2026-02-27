@@ -2,7 +2,11 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import EmailConfig
 from ..services.encryption import encrypt_certificate
-from ..services.email_service import test_smtp_connection, send_test_email
+from ..services.email_service import (
+    test_smtp_connection,
+    send_test_email,
+    build_email_preview,
+)
 from ..utils import permission_required
 from ..services.audit import log_action
 
@@ -128,3 +132,19 @@ def test_send():
         return jsonify({'success': True, 'message': 'Email de prueba enviado'}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@email_bp.route('/preview', methods=['POST'])
+@permission_required('email:configurar')
+def preview_email():
+    """Generar vista previa de email sin envio ni guardado de configuracion."""
+    data = request.get_json(silent=True) or {}
+
+    preview = build_email_preview(
+        email_asunto=data.get('email_asunto'),
+        email_mensaje=data.get('email_mensaje'),
+        email_saludo=data.get('email_saludo'),
+        from_name=data.get('from_name'),
+    )
+
+    return jsonify(preview), 200
