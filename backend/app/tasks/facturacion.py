@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime
+from datetime import datetime, date
+from contextlib import suppress
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from time import sleep
 from uuid import UUID
@@ -38,6 +39,12 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             tenant_id=tenant_id,
             lote_id=lote_id,
             estado='pendiente'
+        ).order_by(
+            Factura.facturador_id.asc(),
+            Factura.punto_venta.asc(),
+            Factura.tipo_comprobante.asc(),
+            Factura.fecha_emision.asc(),
+            Factura.id.asc(),
         ).all()
 
         total = len(facturas)
@@ -85,14 +92,31 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                     ambiente=facturador.ambiente
                 )
 
+                # Fuerza la obtención/reuso del TA una vez por facturador.
+                # Luego, por cada factura se mantiene el flujo:
+                # FECompUltimoAutorizado -> FECAESolicitar.
+                _ = client.wsfe
+
                 # Procesar cada factura
                 for factura in facturas_grupo:
                     try:
-                        result = procesar_factura(client, factura, facturador)
+                        locked_facturador = _lock_facturador_sequence(
+                            tenant_id=tenant_id,
+                            facturador_id=facturador.id,
+                        )
+                        if not locked_facturador:
+                            raise ValueError('Facturador no encontrado para bloquear secuencia')
+
+                        result = procesar_factura(client, factura, locked_facturador)
 
                         if _is_retryable_wsaa_error(result):
                             sleep(5)
-                            result = procesar_factura(client, factura, facturador)
+                            result = procesar_factura(client, factura, locked_facturador)
+
+                        if _is_retryable_sequence_error(result):
+                            _sync_factura_date_with_last_authorized(client, factura)
+                            sleep(1)
+                            result = procesar_factura(client, factura, locked_facturador)
 
                         if result.get('success'):
                             factura.estado = 'autorizado'
@@ -337,6 +361,97 @@ def _is_retryable_wsaa_error(result: dict) -> bool:
         'ya posee un ta valido',
     ]
     return any(fragment in message for fragment in retryable_fragments)
+
+
+def _is_retryable_sequence_error(result: dict) -> bool:
+    if not isinstance(result, dict) or result.get('success'):
+        return False
+
+    code = str(result.get('error_code') or '')
+    message = (result.get('error_message') or '').lower()
+    return code == '10016' or 'proximo a autorizar' in message or 'fecompultimoautorizado' in message
+
+
+def _lock_facturador_sequence(tenant_id, facturador_id):
+    query = Facturador.query.filter_by(id=facturador_id, tenant_id=tenant_id)
+    with suppress(Exception):
+        query = query.with_for_update()
+    return query.first()
+
+
+def _sync_factura_date_with_last_authorized(client, factura: Factura) -> bool:
+    """Sincroniza fecha de emisión si ARCA exige fecha >= último autorizado."""
+    try:
+        ultimo = client.fe_comp_ultimo_autorizado(
+            punto_venta=factura.punto_venta,
+            tipo_cbte=factura.tipo_comprobante,
+        )
+
+        if not ultimo or int(ultimo) <= 0:
+            return False
+
+        ultimo_data = client.fe_comp_consultar(
+            tipo_cbte=factura.tipo_comprobante,
+            punto_venta=factura.punto_venta,
+            numero=int(ultimo),
+        )
+        if not isinstance(ultimo_data, dict) or not ultimo_data.get('encontrado'):
+            return False
+
+        ultima_fecha = _parse_any_date(ultimo_data.get('fecha_cbte'))
+        if not ultima_fecha:
+            return False
+
+        if factura.fecha_emision and factura.fecha_emision >= ultima_fecha:
+            return False
+
+        factura.fecha_emision = ultima_fecha
+
+        if factura.concepto in (2, 3):
+            if factura.fecha_desde and factura.fecha_desde < ultima_fecha:
+                factura.fecha_desde = ultima_fecha
+            if factura.fecha_hasta and factura.fecha_hasta < ultima_fecha:
+                factura.fecha_hasta = ultima_fecha
+            if factura.fecha_vto_pago and factura.fecha_vto_pago < ultima_fecha:
+                factura.fecha_vto_pago = ultima_fecha
+
+        logger.warning(
+            'Ajuste de fecha por secuencia ARCA para factura %s: nueva fecha_emision=%s',
+            str(factura.id),
+            ultima_fecha.isoformat(),
+        )
+        return True
+    except (
+        ArcaAuthError,
+        ArcaNetworkError,
+        ArcaError,
+        ValueError,
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        OSError,
+    ):
+        return False
+
+
+def _parse_any_date(value) -> date | None:
+    if isinstance(value, date):
+        return value
+
+    if value is None:
+        return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    for fmt in ('%Y%m%d', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+
+    return None
 
 
 def _to_json_safe(value):

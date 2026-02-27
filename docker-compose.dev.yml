@@ -18,11 +18,13 @@ services:
     volumes:
       - ./backend:/app
       - ./arca_integration:/app/arca_integration
+      - facturador_arca_ta_cache:/var/lib/arca_ta_cache
 
   worker:
     volumes:
       - ./backend:/app
       - ./arca_integration:/app/arca_integration
+      - facturador_arca_ta_cache:/var/lib/arca_ta_cache
 
   frontend:
     build:
@@ -39,3 +41,6 @@ services:
       - api
     networks:
       - internal
+
+volumes:
+  facturador_arca_ta_cache:

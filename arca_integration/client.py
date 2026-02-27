@@ -1,6 +1,9 @@
 import tempfile
 import os
 import time
+import pickle
+import fcntl
+from contextlib import contextmanager
 from typing import Optional
 
 import arca_arg.settings as arca_settings
@@ -39,7 +42,8 @@ class ArcaClient:
 
         # Cache estable de TA por CUIT/ambiente para evitar pedir login WSAA
         # en cada emisión (evita errores como "ya posee un TA válido").
-        ta_base_dir = os.path.join(tempfile.gettempdir(), 'arca_ta_cache', self.ambiente, self.cuit)
+        ta_cache_root = os.getenv('ARCA_TA_CACHE_DIR') or os.path.join(tempfile.gettempdir(), 'arca_ta_cache')
+        ta_base_dir = os.path.join(ta_cache_root, self.ambiente, self.cuit)
         os.makedirs(ta_base_dir, exist_ok=True)
         if not ta_base_dir.endswith(os.sep):
             ta_base_dir = ta_base_dir + os.sep
@@ -81,43 +85,101 @@ class ArcaClient:
     def wsfe(self) -> ArcaWebService:
         """Obtiene o crea la instancia de WSFE (Factura Electrónica)."""
         if self._wsfe is None:
-            self._ensure_settings()
             wsdl = WSDL_FEV1_PROD if self.is_production else WSDL_FEV1_HOM
-            last_err = None
-            for attempt in range(3):
-                try:
-                    self._wsfe = ArcaWebService(wsdl, 'wsfe', enable_logging=False)
-                    break
-                except Exception as e:
-                    last_err = e
-                    if 'ya posee un ta valido' in str(e).lower() and attempt < 2:
-                        time.sleep(2 * (attempt + 1))
-                        self._ensure_settings()
-                        continue
-                    raise ArcaAuthError(f'Error al conectar con WSFE: {str(e)}')
+            self._wsfe = self._create_webservice_with_ta_fallback(
+                wsdl=wsdl,
+                service='wsfe',
+                error_prefix='Error al conectar con WSFE',
+            )
         return self._wsfe
 
     @property
     def ws_constancia(self) -> ArcaWebService:
         """Obtiene o crea la instancia del servicio de Constancia de Inscripción (padrón)."""
         if self._ws_constancia is None:
-            self._ensure_settings()
             wsdl = WSDL_CONSTANCIA_PROD if self.is_production else WSDL_CONSTANCIA_HOM
-            last_err = None
+            self._ws_constancia = self._create_webservice_with_ta_fallback(
+                wsdl=wsdl,
+                service='ws_sr_constancia_inscripcion',
+                error_prefix='Error al conectar con servicio de padrón',
+            )
+        return self._ws_constancia
+
+    def _create_webservice_with_ta_fallback(self, wsdl: str, service: str, error_prefix: str) -> ArcaWebService:
+        """Crea webservice reutilizando TA local válido cuando existe.
+
+        Serializa la inicialización por servicio para evitar carreras entre
+        procesos que intenten renovar TA al mismo tiempo.
+        """
+        with self._ta_file_lock(service):
+            self._ensure_settings()
+
             for attempt in range(3):
                 try:
-                    self._ws_constancia = ArcaWebService(
-                        wsdl, 'ws_sr_constancia_inscripcion', enable_logging=False
-                    )
-                    break
+                    return ArcaWebService(wsdl, service, enable_logging=False)
                 except Exception as e:
-                    last_err = e
-                    if 'ya posee un ta valido' in str(e).lower() and attempt < 2:
-                        time.sleep(2 * (attempt + 1))
+                    message = str(e)
+                    lowered = self._normalize_wsaa_message(message)
+
+                    if 'ya posee un ta valido' in lowered and attempt < 2:
+                        # Otro proceso puede haber emitido TA válido recién.
+                        # Reintentar reutilizando cache local.
+                        time.sleep(attempt + 1)
                         self._ensure_settings()
+                        if self._has_valid_local_ta(service):
+                            continue
                         continue
-                    raise ArcaAuthError(f'Error al conectar con servicio de padrón: {str(e)}')
-        return self._ws_constancia
+
+                    raise ArcaAuthError(f'{error_prefix}: {message}')
+
+        raise ArcaAuthError(f'{error_prefix}: no se pudo inicializar el servicio')
+
+    @contextmanager
+    def _ta_file_lock(self, service: str):
+        lock_path = os.path.join(self._ta_path, f'{service}.lock')
+        lock_file = open(lock_path, 'a+')
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+
+    def _has_valid_local_ta(self, service: str) -> bool:
+        ta_file = os.path.join(self._ta_path, f'{service}.pkl')
+        if not os.path.exists(ta_file):
+            return False
+
+        try:
+            with open(ta_file, 'rb') as f:
+                ticket = pickle.load(f)
+        except (OSError, pickle.UnpicklingError, EOFError, AttributeError, ValueError):
+            return False
+
+        is_expired = getattr(ticket, 'is_expired', None)
+        if isinstance(is_expired, bool):
+            return not is_expired
+
+        expires = getattr(ticket, 'expires', None)
+        if isinstance(expires, (int, float)):
+            return time.time() < float(expires)
+
+        expires_str = getattr(ticket, 'expires_str', None)
+        if expires_str:
+            # Si no podemos validar con seguridad, dejamos que ArcaWebService decida.
+            return True
+
+        return False
+    def _normalize_wsaa_message(self, message: str) -> str:
+        return (
+            (message or '')
+            .lower()
+            .replace('á', 'a')
+            .replace('é', 'e')
+            .replace('í', 'i')
+            .replace('ó', 'o')
+            .replace('ú', 'u')
+        )
 
     def __del__(self):
         """Limpia archivos temporales al destruir el objeto."""
@@ -395,7 +457,7 @@ class ArcaClient:
 
         return response
 
-    def _format_domicilio(self, domicilio) -> str:
+    def _format_domicilio(self, domicilio) -> Optional[str]:
         """Formatea el domicilio de ARCA."""
         parts = []
         for attr in ['direccion', 'localidad', 'descripcionProvincia']:
