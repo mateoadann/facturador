@@ -37,6 +37,9 @@ Guidelines for coding agents working in this repository.
 
 ## 5) Build, Lint, Test Commands
 
+- Mandatory rule for agents: run backend/frontend checks through Docker/Make targets in this repo.
+- Do not rely on host-level test execution (`python -m pytest`, `pytest`, `npm run ...`) unless the user explicitly asks for host-only execution.
+
 ### Full-stack / lifecycle
 
 - Start stack: `make up`

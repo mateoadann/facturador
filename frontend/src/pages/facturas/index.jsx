@@ -20,7 +20,9 @@ import { formatCUIT, formatCurrency, formatDate, formatComprobante } from '@/lib
 import { useJobStatus } from '@/hooks/useJobStatus'
 import { usePermission } from '@/hooks/usePermission'
 import { toast } from '@/stores/toastStore'
+import { useDownloadsStore } from '@/stores/downloadsStore'
 import BulkEmailModal from './BulkEmailModal'
+import BulkPdfDownloadModal from './BulkPdfDownloadModal'
 
 function Facturas() {
   const queryClient = useQueryClient()
@@ -34,8 +36,11 @@ function Facturas() {
   const [downloadingFacturaId, setDownloadingFacturaId] = useState(null)
   const [sendingEmailId, setSendingEmailId] = useState(null)
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [isBulkPdfModalOpen, setIsBulkPdfModalOpen] = useState(false)
   const [emailTaskId, setEmailTaskId] = useState(null)
   const canSendEmail = usePermission('email:enviar')
+  const canDownloadComprobante = usePermission('facturas:comprobante')
+  const addZipTask = useDownloadsStore((s) => s.addZipTask)
 
   const { data, isLoading } = useQuery({
     queryKey: ['facturas', filters],
@@ -69,7 +74,7 @@ function Facturas() {
       const response = await api.lotes.list({ para_email: true, per_page: 200 })
       return response.data
     },
-    enabled: canSendEmail,
+    enabled: canSendEmail || canDownloadComprobante,
   })
 
   const { data: emailJobStatus } = useJobStatus(emailTaskId, {
@@ -101,6 +106,27 @@ function Facturas() {
     },
     onError: (error) => {
       toast.error('Error', error.response?.data?.error || 'No se pudo iniciar el envio masivo')
+    },
+  })
+
+  const generarZipLoteMutation = useMutation({
+    mutationFn: ({ loteId }) => api.lotes.generarComprobantesZip(loteId),
+    onSuccess: (response, { loteId }) => {
+      const taskId = response?.data?.task_id
+      if (taskId) {
+        const selectedLote = lotes.find((l) => l.id === loteId)
+        addZipTask({
+          taskId,
+          loteId,
+          loteEtiqueta: selectedLote?.etiqueta || 'sin etiqueta',
+          createdAt: new Date().toISOString(),
+        })
+      }
+      setIsBulkPdfModalOpen(false)
+      toast.info('Generacion de ZIP encolada', 'El archivo se descargara automaticamente al finalizar')
+    },
+    onError: (error) => {
+      toast.error('Error', error.response?.data?.error || 'No se pudo iniciar la descarga del lote')
     },
   })
 
@@ -158,8 +184,12 @@ function Facturas() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       const contentDisposition = response.headers?.['content-disposition'] || ''
-      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/) 
-      const fallback = `comprobante-${factura.punto_venta || 0}-${factura.numero_comprobante || factura.id}.pdf`
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
+      const cuit = String(factura.facturador?.cuit || '').replace(/\D/g, '').padStart(11, '0')
+      const tipo = String(factura.tipo_comprobante || 0).padStart(3, '0')
+      const ptoVta = String(factura.punto_venta || 0).padStart(5, '0')
+      const nro = String(factura.numero_comprobante || 0).padStart(8, '0')
+      const fallback = `${cuit}_${tipo}_${ptoVta}_${nro}.pdf`
       a.href = url
       a.download = fileNameMatch?.[1] || fallback
       document.body.appendChild(a)
@@ -275,6 +305,17 @@ function Facturas() {
             disabled={sendLoteEmailsMutation.isPending || !!emailTaskId}
           >
             Enviar emails del lote
+          </Button>
+        )}
+
+        {canDownloadComprobante && (
+          <Button
+            variant="secondary"
+            icon={Download}
+            onClick={() => setIsBulkPdfModalOpen(true)}
+            disabled={generarZipLoteMutation.isPending}
+          >
+            Descarga PDF de Lotes
           </Button>
         )}
       </div>
@@ -447,6 +488,14 @@ function Facturas() {
         lotes={lotes}
         onConfirm={({ loteId, mode }) => sendLoteEmailsMutation.mutate({ loteId, mode })}
         isSubmitting={sendLoteEmailsMutation.isPending}
+      />
+
+      <BulkPdfDownloadModal
+        isOpen={isBulkPdfModalOpen}
+        onClose={() => setIsBulkPdfModalOpen(false)}
+        lotes={lotes}
+        onConfirm={({ loteId }) => generarZipLoteMutation.mutate({ loteId })}
+        isSubmitting={generarZipLoteMutation.isPending}
       />
     </div>
   )
