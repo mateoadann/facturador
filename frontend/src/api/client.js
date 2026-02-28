@@ -77,7 +77,7 @@ export const api = {
 
   // Dashboard
   dashboard: {
-    getStats: () => client.get('/dashboard/stats'),
+    getStats: (params) => client.get('/dashboard/stats', { params }),
   },
 
   // Facturadores
