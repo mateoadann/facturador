@@ -180,6 +180,34 @@ function Facturas() {
     !!filters.fecha_hasta,
   ].filter(Boolean).length
 
+  const hasPagination = (data?.total || 0) > 0
+
+  const renderPagination = (position) => (
+    <div className={`flex items-center justify-between px-4 py-3 ${position === 'top' ? 'border-b border-border' : 'border-t border-border'}`}>
+      <span className="text-sm text-text-secondary">
+        Página {data?.page || filters.page} de {data?.pages || 1} · Mostrando {facturas.length} de {data?.total || 0} facturas
+      </span>
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={(data?.page || filters.page) <= 1}
+          onClick={() => setFilters({ ...filters, page: filters.page - 1 })}
+        >
+          Anterior
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={(data?.page || filters.page) >= (data?.pages || 1)}
+          onClick={() => setFilters({ ...filters, page: filters.page + 1 })}
+        >
+          Siguiente
+        </Button>
+      </div>
+    </div>
+  )
+
   const getEstadoBadge = (estado, factura) => {
     if (estado === 'error') {
       return (
@@ -330,6 +358,8 @@ function Facturas() {
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card">
+        {hasPagination && renderPagination('top')}
+
         <Table>
           <TableHeader>
             <TableRow>
@@ -462,32 +492,7 @@ function Facturas() {
           </TableBody>
         </Table>
 
-        {/* Pagination */}
-        {(data?.total || 0) > 0 && (
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
-            <span className="text-sm text-text-secondary">
-              Página {data?.page || filters.page} de {data?.pages || 1} · Mostrando {facturas.length} de {data.total} facturas
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={(data?.page || filters.page) <= 1}
-                onClick={() => setFilters({ ...filters, page: filters.page - 1 })}
-              >
-                Anterior
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={(data?.page || filters.page) >= (data?.pages || 1)}
-                onClick={() => setFilters({ ...filters, page: filters.page + 1 })}
-              >
-                Siguiente
-              </Button>
-            </div>
-          </div>
-        )}
+        {hasPagination && renderPagination('bottom')}
       </div>
 
       <BulkEmailModal

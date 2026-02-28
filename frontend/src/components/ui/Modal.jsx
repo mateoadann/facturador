@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,7 +17,7 @@ function Modal({ isOpen, onClose, title, children, className, footer }) {
 
   if (!isOpen) return null
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
@@ -54,6 +55,8 @@ function Modal({ isOpen, onClose, title, children, className, footer }) {
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
 
 export default Modal
