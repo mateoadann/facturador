@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 
 from flask import render_template_string
 
-from arca_integration.constants import ALICUOTAS_IVA, TIPOS_COMPROBANTE
+from arca_integration.constants import ALICUOTAS_IVA
 
 
 COMPROBANTE_TEMPLATE = """
@@ -44,8 +44,9 @@ COMPROBANTE_TEMPLATE = """
     .page {
       width: 7.65in;
       margin: 0 auto;
-      position: relative;
       min-height: 11.29in;
+      display: flex;
+      flex-direction: column;
     }
 
     .page-break {
@@ -65,6 +66,7 @@ COMPROBANTE_TEMPLATE = """
     .bill-container {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
       font-size: 12px;
     }
 
@@ -85,17 +87,23 @@ COMPROBANTE_TEMPLATE = """
 
     .bill-emitter-row td:nth-child(1) {
       padding-right: 60px;
+      padding-top: 6px;
+    }
+
+    .bill-emitter-row td:nth-child(1) p {
+      margin: 2px 0;
+      line-height: 1.2;
     }
 
     .bill-emitter-row td:nth-child(2) p {
-      padding-left: 60px;
-      margin: 2px 0;
-      line-height: 1.3;
+      padding-left: 0;
+      margin: 3px 0;
+      line-height: 1.35;
     }
 
     .bill-emitter-row td:nth-child(2) .text-lg {
-      display: inline-block;
-      margin-left: 70px;
+      display: block;
+      margin-left: 0;
     }
 
     .bill-type {
@@ -131,7 +139,8 @@ COMPROBANTE_TEMPLATE = """
       font-size: 16px;
       font-weight: 700;
       text-align: center;
-      margin-top: 10px;
+      margin-top: 2px;
+      margin-bottom: 12px;
     }
 
     .text-center {
@@ -163,24 +172,44 @@ COMPROBANTE_TEMPLATE = """
     }
 
     .fac-datos {
-      margin-left: -18px;
+      margin-left: 0;
+      padding: 0 10px 0 56px;
       max-width: 100%;
     }
 
-    .row.inline {
-      display: inline-flex;
-      justify-content: start;
-      margin-top: 30px;
-      gap: 10px;
+    .comp-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      margin-top: 10px;
+      margin-bottom: 4px;
+      gap: 16px;
       align-items: baseline;
-      white-space: nowrap;
+      width: 100%;
+      padding: 0;
     }
 
-    .row.inline p {
+    .content {
+      flex: 1;
+    }
+
+    .comp-row p {
       margin: 0;
       font-size: 12px;
-      line-height: 1.1;
+      line-height: 1.15;
       padding-left: 0;
+      white-space: nowrap;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+
+    .comp-row p:last-child {
+      text-align: right;
+    }
+
+    .receptor-block p {
+      line-height: 1.35;
+      margin-bottom: 3px;
     }
 
     .bill-row td {
@@ -189,8 +218,10 @@ COMPROBANTE_TEMPLATE = """
 
     .bill-row td > div {
       border: 1px solid #000;
-      margin: 0 -1px 0 -2px;
+      margin: 0;
       padding: 16px 16px 10px 16px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
 
     .bill-row.compact td > div,
@@ -203,34 +234,78 @@ COMPROBANTE_TEMPLATE = """
       line-height: 1.2;
     }
 
-    .row-details table {
+    .items-table {
       border-collapse: collapse;
       width: 100%;
+      table-layout: fixed;
     }
 
     .row-details td > div {
       border: 0;
-      margin: 0 -1px 0 -2px;
+      margin: 0;
       padding: 0;
     }
 
-    .row-details table td {
-      padding: 5px;
+    .items-table thead {
+      display: table-header-group;
+    }
+
+    .items-table tfoot {
+      display: table-footer-group;
+    }
+
+    .items-table tbody tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .items-table th,
+    .items-table td {
+      padding: 5px 6px;
       font-size: 11px;
       vertical-align: top;
     }
 
-    .row-details table tr:nth-child(1) {
+    .items-table thead tr {
       border-top: 1px solid;
       border-bottom: 1px solid;
-      background: #c0c0c0;
+      background: #b1b1b1;
       font-weight: 700;
-      text-align: center;
       font-size: 11px;
     }
 
-    .row-details table tr + tr {
+    .items-table tbody tr + tr {
       border-top: 1px solid #c0c0c0;
+    }
+
+    .items-table th.code,
+    .items-table td.code {
+      text-align: center;
+    }
+
+    .items-table th.desc,
+    .items-table td.desc {
+      text-align: left;
+    }
+
+    .items-table th.qty,
+    .items-table td.qty,
+    .items-table th.price,
+    .items-table td.price,
+    .items-table th.bonif,
+    .items-table td.bonif,
+    .items-table th.subtotal,
+    .items-table td.subtotal,
+    .items-table th.iva,
+    .items-table td.iva,
+    .items-table th.subtotaliva,
+    .items-table td.subtotaliva {
+      text-align: right;
+    }
+
+    .items-table th.unit,
+    .items-table td.unit {
+      text-align: left;
     }
 
     .item-descripcion {
@@ -253,18 +328,11 @@ COMPROBANTE_TEMPLATE = """
       padding: 0 8px;
     }
 
-    .page .content {
-      padding-bottom: 270px;
-      min-height: 0;
-    }
-
     .footer-block {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      margin-top: auto;
       width: 100%;
       page-break-inside: avoid;
+      break-inside: avoid;
     }
 
     .footer-legal {
@@ -272,25 +340,35 @@ COMPROBANTE_TEMPLATE = """
       align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
-      padding-top: 8px;
+      padding-top: 4px;
     }
 
     .footer-legal .left {
       display: flex;
       gap: 12px;
       align-items: flex-start;
-      width: 45%;
+      width: 62%;
     }
 
     #qrcode {
-      width: 120px;
-      max-width: 120px;
+      width: 96px;
+      max-width: 96px;
+      height: 96px;
+    }
+
+    .marca {
+      min-height: 96px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
     }
 
     .marca svg {
       display: block;
-      margin-bottom: 8px;
-      margin-left: 4px;
+      margin-bottom: 2px;
+      margin-left: 0;
+      width: 145px;
+      height: auto;
     }
 
     .marca text {
@@ -299,52 +377,43 @@ COMPROBANTE_TEMPLATE = """
 
     .legal-title {
       font-weight: 700;
-      font-size: 11px;
-      letter-spacing: 0.3px;
+      font-size: 10px;
+      letter-spacing: 0.2px;
       line-height: 1.1;
-      margin-top: 1px;
-      margin-bottom: 5px;
+      margin-top: 0;
+      margin-bottom: 2px;
       color: #000;
     }
 
     .legal-note {
       font-style: italic;
-      font-size: 10px;
+      font-size: 8px;
       color: #000;
-      letter-spacing: 0.2px;
-      line-height: 1.2;
+      letter-spacing: 0;
+      line-height: 1.1;
       text-align: left;
-      margin-top: 5px;
+      margin-top: 0;
       margin-bottom: 0;
-    }
-
-    .footer-legal .center {
-      width: 10%;
-      text-align: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .page-counter {
-      font-weight: 700;
-      font-size: 14px;
-      white-space: nowrap;
+      max-width: 255px;
     }
 
     .footer-legal .right {
-      width: 45%;
+      width: 38%;
       text-align: right;
-      font-size: 12px;
-      line-height: 1.4;
+      font-size: 11px;
+      line-height: 1.3;
+      white-space: nowrap;
+      padding-top: 2px;
     }
 
     .transparencia-row td > div {
       border: 1px solid #000;
       padding: 8px 12px 14px;
-      margin: 0 -1px 0 -2px;
+      margin: 0;
       font-size: 11px;
       line-height: 1.25;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
 
     .transparencia-box .title {
@@ -406,12 +475,12 @@ COMPROBANTE_TEMPLATE = """
               <div class="cod-line">COD. {{ codigo_tipo }}</div>
               {% endif %}
               <div class="text-lg">{{ titulo }}</div>
-              <div class="row inline">
-                <p><strong>Punto de Venta:{{ punto_venta_largo }}</strong></p>
-                <p><strong>Comp. Nro:{{ numero_comprobante_largo }}</strong></p>
+              <div class="comp-row">
+                <p><strong>Punto de Venta: {{ punto_venta_largo }}</strong></p>
+                <p><strong>Comp. Nro: {{ numero_comprobante_largo }}</strong></p>
               </div>
-              <p><strong>Fecha de Emisión:</strong>{{ fecha_emision }}</p>
-              <p><strong>CUIT:</strong>{{ emisor_cuit }}</p>
+              <p><strong>Fecha de Emisión:</strong> {{ fecha_emision }}</p>
+              <p><strong>CUIT:</strong> {{ emisor_cuit }}</p>
               <p><strong>Ingresos Brutos:</strong> {{ emisor_ingresos_brutos }}</p>
               <p><strong>Fecha de Inicio de Actividades:</strong> {{ emisor_inicio_actividades }}</p>
             </div>
@@ -421,16 +490,16 @@ COMPROBANTE_TEMPLATE = """
         <tr class="bill-row compact">
           <td colspan="2">
             <div class="row">
-              <p class="col-4 margin-b-0"><strong>Período Facturado Desde:{{ periodo_desde }}</strong></p>
-              <p class="col-3 margin-b-0"><strong>Hasta:{{ periodo_hasta }}</strong></p>
-              <p class="col-5 margin-b-0"><strong>Fecha de Vto. para el pago:{{ periodo_vto }}</strong></p>
+              <p class="col-4 margin-b-0"><strong>Período Facturado Desde: {{ periodo_desde }}</strong></p>
+              <p class="col-3 margin-b-0"><strong>Hasta: {{ periodo_hasta }}</strong></p>
+              <p class="col-5 margin-b-0"><strong>Fecha de Vto. para el pago: {{ periodo_vto }}</strong></p>
             </div>
           </td>
         </tr>
 
         <tr class="bill-row compact">
           <td colspan="2">
-            <div>
+            <div class="receptor-block">
               <div class="row">
                 <p class="col-4 margin-b-0"><strong>CUIL/CUIT:</strong> {{ receptor_doc_nro }}</p>
                 <p class="col-8 margin-b-0"><strong>Apellido y Nombre/Razón social:</strong> {{ receptor_razon_social }}</p>
@@ -450,55 +519,84 @@ COMPROBANTE_TEMPLATE = """
         <tr class="bill-row row-details">
           <td colspan="2">
             <div>
-              <table>
+              <table class="items-table">
                 {% if discrimina_iva %}
-                <tr>
-                  <td style="width:7%;">Código</td>
-                  <td style="width:29%;">Producto / Servicio</td>
-                  <td style="width:8%;">Cantidad</td>
-                  <td style="width:9%;">U. Medida</td>
-                  <td style="width:11%;">Precio Unit.</td>
-                  <td style="width:8%;">% Bonif.</td>
-                  <td style="width:10%;">SubTotal</td>
-                  <td style="width:8%;">Alícuota IVA</td>
-                  <td style="width:10%;">Subtotal c/IVA</td>
-                </tr>
-                {% for it in items %}
-                <tr>
-                  <td></td>
-                  <td class="item-descripcion">{{ it.descripcion }}</td>
-                  <td class="text-right">{{ it.cantidad }}</td>
-                  <td>{{ it.unidad }}</td>
-                  <td class="text-right">{{ it.precio_unitario }}</td>
-                  <td class="text-right">{{ it.bonif_pct }}</td>
-                  <td class="text-right">{{ it.subtotal }}</td>
-                  <td class="text-right">{{ it.alicuota }}</td>
-                  <td class="text-right">{{ it.subtotal_con_iva }}</td>
-                </tr>
-                {% endfor %}
+                <colgroup>
+                  <col style="width:7%;">
+                  <col style="width:29%;">
+                  <col style="width:8%;">
+                  <col style="width:9%;">
+                  <col style="width:11%;">
+                  <col style="width:8%;">
+                  <col style="width:10%;">
+                  <col style="width:8%;">
+                  <col style="width:10%;">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="code">Código</th>
+                    <th class="desc">Producto / Servicio</th>
+                    <th class="qty">Cantidad</th>
+                    <th class="unit">U. Medida</th>
+                    <th class="price">Precio Unit.</th>
+                    <th class="bonif">% Bonif.</th>
+                    <th class="subtotal">SubTotal</th>
+                    <th class="iva">Alícuota IVA</th>
+                    <th class="subtotaliva">Subtotal c/IVA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for it in items %}
+                  <tr>
+                    <td class="code"></td>
+                    <td class="item-descripcion desc">{{ it.descripcion }}</td>
+                    <td class="qty">{{ it.cantidad }}</td>
+                    <td class="unit">{{ it.unidad }}</td>
+                    <td class="price">{{ it.precio_unitario }}</td>
+                    <td class="bonif">{{ it.bonif_pct }}</td>
+                    <td class="subtotal">{{ it.subtotal }}</td>
+                    <td class="iva">{{ it.alicuota }}</td>
+                    <td class="subtotaliva">{{ it.subtotal_con_iva }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
                 {% else %}
-                <tr>
-                  <td style="width:8%;">Código</td>
-                  <td style="width:30%;">Producto / Servicio</td>
-                  <td style="width:10%;">Cantidad</td>
-                  <td style="width:12%;">U. Medida</td>
-                  <td style="width:14%;">Precio Unit.</td>
-                  <td style="width:8%;">% Bonif.</td>
-                  <td style="width:8%;">Imp. Bonif.</td>
-                  <td style="width:10%;">Subtotal</td>
-                </tr>
-                {% for it in items %}
-                <tr>
-                  <td></td>
-                  <td class="item-descripcion">{{ it.descripcion }}</td>
-                  <td class="text-right">{{ it.cantidad }}</td>
-                  <td>{{ it.unidad }}</td>
-                  <td class="text-right">{{ it.precio_unitario }}</td>
-                  <td class="text-right">{{ it.bonif_pct }}</td>
-                  <td class="text-right">{{ it.imp_bonif }}</td>
-                  <td class="text-right">{{ it.subtotal }}</td>
-                </tr>
-                {% endfor %}
+                <colgroup>
+                  <col style="width:8%;">
+                  <col style="width:30%;">
+                  <col style="width:10%;">
+                  <col style="width:12%;">
+                  <col style="width:14%;">
+                  <col style="width:8%;">
+                  <col style="width:8%;">
+                  <col style="width:10%;">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="code">Código</th>
+                    <th class="desc">Producto / Servicio</th>
+                    <th class="qty">Cantidad</th>
+                    <th class="unit">U. Medida</th>
+                    <th class="price">Precio Unit.</th>
+                    <th class="bonif">% Bonif.</th>
+                    <th class="subtotal">Imp. Bonif.</th>
+                    <th class="subtotaliva">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for it in items %}
+                  <tr>
+                    <td class="code"></td>
+                    <td class="item-descripcion desc">{{ it.descripcion }}</td>
+                    <td class="qty">{{ it.cantidad }}</td>
+                    <td class="unit">{{ it.unidad }}</td>
+                    <td class="price">{{ it.precio_unitario }}</td>
+                    <td class="bonif">{{ it.bonif_pct }}</td>
+                    <td class="subtotal">{{ it.imp_bonif }}</td>
+                    <td class="subtotaliva">{{ it.subtotal }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
                 {% endif %}
               </table>
             </div>
@@ -572,12 +670,8 @@ COMPROBANTE_TEMPLATE = """
                 </div>
               </div>
 
-              <div class="center">
-                <div class="page-counter"><strong>Pág. 1/1</strong></div>
-              </div>
-
               <div class="right">
-                <div class="row text-right margin-b-10"><strong>CAE Nº:&nbsp;</strong>{{ cae }}</div>
+                <div class="row text-right"><strong>CAE Nº:&nbsp;</strong>{{ cae }}</div>
                 <div class="row text-right"><strong>Fecha de Vto. de CAE:&nbsp;</strong>{{ cae_vencimiento }}</div>
               </div>
             </div>
@@ -664,7 +758,7 @@ def _build_context(factura):
         'letra': letra,
         'discrimina_iva': discrimina_iva,
         'is_nota_credito': is_nota_credito,
-        'mostrar_cod_tipo': tipo in {11, 12, 13},
+        'mostrar_cod_tipo': False,
         'codigo_tipo': f'{tipo:03d}',
         'punto_venta_largo': f'{punto_venta:05d}',
         'numero_comprobante_largo': f'{numero:08d}',
@@ -837,5 +931,4 @@ def _date(value):
 
 
 def _format_comp(punto_venta, numero, tipo):
-    tipo_nombre = TIPOS_COMPROBANTE.get(int(tipo), f'Tipo {tipo}')
-    return f'{tipo_nombre} {int(punto_venta):05d}-{int(numero):08d}'
+    return str(int(numero))
