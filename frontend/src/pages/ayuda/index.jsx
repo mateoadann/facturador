@@ -18,6 +18,12 @@ const TIPOS_COMPROBANTE = [
   { id: 53, nombre: 'Nota de Credito M' },
 ]
 
+const CONCEPTOS = [
+  { id: 1, nombre: 'Productos' },
+  { id: 2, nombre: 'Servicios' },
+  { id: 3, nombre: 'Productos y servicios' },
+]
+
 function Ayuda() {
   const openGuide = async () => {
     const popup = window.open('', '_blank')
@@ -55,29 +61,57 @@ function Ayuda() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-5">
-        <h3 className="text-base font-semibold text-text-primary">Cheatsheet rapido: IDs de comprobantes</h3>
-        <p className="mt-1 text-sm text-text-secondary">
-          Usa estos IDs en importacion CSV y filtros para encontrar comprobantes mas rapido.
-        </p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-lg border border-border bg-card p-5">
+          <h3 className="text-base font-semibold text-text-primary">Cheatsheet rapido: IDs de conceptos</h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            Estos IDs se usan para definir si la factura corresponde a productos, servicios o ambos.
+          </p>
 
-        <div className="mt-4 overflow-hidden rounded-md border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/60 text-left">
-              <tr>
-                <th className="w-24 px-4 py-2 text-text-primary">ID</th>
-                <th className="px-4 py-2 text-text-primary">Tipo de comprobante</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TIPOS_COMPROBANTE.map((tipo) => (
-                <tr key={tipo.id} className="border-t border-border">
-                  <td className="px-4 py-2 font-mono text-text-primary">{tipo.id}</td>
-                  <td className="px-4 py-2 text-text-secondary">{tipo.nombre}</td>
+          <div className="mt-4 overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-secondary/60 text-left">
+                <tr>
+                  <th className="w-24 px-4 py-2 text-text-primary">ID</th>
+                  <th className="px-4 py-2 text-text-primary">Concepto</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {CONCEPTOS.map((concepto) => (
+                  <tr key={concepto.id} className="border-t border-border">
+                    <td className="px-4 py-2 font-mono text-text-primary">{concepto.id}</td>
+                    <td className="px-4 py-2 text-text-secondary">{concepto.nombre}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <h3 className="text-base font-semibold text-text-primary">Cheatsheet rapido: IDs de comprobantes</h3>
+          <p className="mt-1 text-sm text-text-secondary">
+            Usa estos IDs en importacion CSV y filtros para encontrar comprobantes mas rapido.
+          </p>
+
+          <div className="mt-4 overflow-hidden rounded-md border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-secondary/60 text-left">
+                <tr>
+                  <th className="w-24 px-4 py-2 text-text-primary">ID</th>
+                  <th className="px-4 py-2 text-text-primary">Tipo de comprobante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {TIPOS_COMPROBANTE.map((tipo) => (
+                  <tr key={tipo.id} className="border-t border-border">
+                    <td className="px-4 py-2 font-mono text-text-primary">{tipo.id}</td>
+                    <td className="px-4 py-2 text-text-secondary">{tipo.nombre}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
