@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FileText, CheckCircle, XCircle, Clock, TrendingUp, Users } from 'lucide-react'
 import { api } from '@/api/client'
+import { useAuthStore } from '@/stores/authStore'
 import {
   Button,
   Input,
@@ -28,11 +29,12 @@ function getCurrentMonthValue() {
 }
 
 function Dashboard() {
+  const currentUserId = useAuthStore((s) => s.user?.id)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
   const [historico, setHistorico] = useState(false)
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard-stats', { selectedMonth, historico }],
+    queryKey: ['dashboard-stats', currentUserId, { selectedMonth, historico }],
     queryFn: async () => {
       const params = historico
         ? { historico: true }
@@ -40,11 +42,13 @@ function Dashboard() {
       const response = await api.dashboard.getStats(params)
       return response.data
     },
+    enabled: !!currentUserId,
   })
 
   const trendData = stats?.facturacion_12_meses || []
   const topClientes = stats?.top_clientes || []
   const ticket = stats?.ticket_promedio || null
+  const sensitiveHidden = !!stats?.sensitive_hidden
   const maxTrendTotal = trendData.reduce((max, item) => Math.max(max, item.total || 0), 0)
 
   const periodoLabel = historico
@@ -67,40 +71,48 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg bg-card p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="mb-2 text-lg font-semibold text-text-primary">
-              {historico ? 'Total Facturado del Periodo' : 'Total Facturado del Mes'}
-            </h2>
-            <p className="text-4xl font-bold text-primary">
-              {formatCurrency(stats?.total_mes || 0)}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="w-full sm:w-auto sm:min-w-[220px]">
-              <Input
-                type="month"
-                label="Mes de analisis"
-                value={selectedMonth}
-                disabled={historico}
-                max={getCurrentMonthValue()}
-                onChange={(event) => setSelectedMonth(event.target.value)}
-              />
+      {!sensitiveHidden && (
+        <div className="rounded-lg bg-card p-6 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="mb-2 text-lg font-semibold text-text-primary">
+                {historico ? 'Total Facturado del Periodo' : 'Total Facturado del Mes'}
+              </h2>
+              <p className="text-4xl font-bold text-primary">
+                {formatCurrency(stats?.total_mes || 0)}
+              </p>
             </div>
-            <Button
-              variant={historico ? 'primary' : 'secondary'}
-              onClick={() => setHistorico((prev) => !prev)}
-            >
-              Historico
-            </Button>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-full sm:w-auto sm:min-w-[220px]">
+                <Input
+                  type="month"
+                  label="Mes de analisis"
+                  value={selectedMonth}
+                  disabled={historico}
+                  max={getCurrentMonthValue()}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                />
+              </div>
+              <Button
+                variant={historico ? 'primary' : 'secondary'}
+                onClick={() => setHistorico((prev) => !prev)}
+              >
+                Historico
+              </Button>
+            </div>
           </div>
+          <p className="mt-3 text-sm text-text-secondary">
+            Periodo seleccionado: <span className="font-medium text-text-primary">{periodoLabel}</span>
+          </p>
         </div>
-        <p className="mt-3 text-sm text-text-secondary">
-          Periodo seleccionado: <span className="font-medium text-text-primary">{periodoLabel}</span>
-        </p>
-      </div>
+      )}
+
+      {sensitiveHidden && (
+        <div className="rounded-lg bg-card p-4 text-sm text-text-secondary shadow-sm">
+          El administrador restringió la visualización de métricas sensibles para tu usuario.
+        </div>
+      )}
 
       {/* Metrics Grid */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -122,88 +134,92 @@ function Dashboard() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg bg-card p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-text-primary">Facturacion mensual (12 meses)</h2>
-            <TrendingUp className="h-5 w-5 text-primary" />
+      {!sensitiveHidden && (
+        <>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-lg bg-card p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-text-primary">Facturacion mensual (12 meses)</h2>
+                <TrendingUp className="h-5 w-5 text-primary" />
+              </div>
+
+              <div className="space-y-3">
+                {trendData.map((item) => {
+                  const widthPercent = maxTrendTotal > 0 ? ((item.total || 0) / maxTrendTotal) * 100 : 0
+                  return (
+                    <div key={item.month}>
+                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                        <span className="text-text-secondary">{item.label}</span>
+                        <span className="font-medium text-text-primary">
+                          {formatCurrency(item.total || 0)} - {item.cantidad || 0} facturas
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-secondary">
+                        <div
+                          className="h-2 rounded-full bg-primary transition-all"
+                          style={{ width: `${Math.max(widthPercent, 2)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-card p-6 shadow-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-text-primary">Ticket promedio</h2>
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
+              <p className="text-4xl font-bold text-primary">
+                {formatCurrency(ticket?.valor || 0)}
+              </p>
+              <p className="mt-2 text-sm text-text-secondary">
+                Total facturado: <span className="font-medium text-text-primary">{formatCurrency(ticket?.total || 0)}</span>
+                {' '}en <span className="font-medium text-text-primary">{ticket?.cantidad || 0}</span> facturas autorizadas
+              </p>
+              <p className={`mt-2 text-sm ${ticketVariation != null && ticketVariation >= 0 ? 'text-success' : 'text-text-secondary'}`}>
+                {ticketVariationLabel}
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {trendData.map((item) => {
-              const widthPercent = maxTrendTotal > 0 ? ((item.total || 0) / maxTrendTotal) * 100 : 0
-              return (
-                <div key={item.month}>
-                  <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                    <span className="text-text-secondary">{item.label}</span>
-                    <span className="font-medium text-text-primary">
-                      {formatCurrency(item.total || 0)} - {item.cantidad || 0} facturas
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-secondary">
-                    <div
-                      className="h-2 rounded-full bg-primary transition-all"
-                      style={{ width: `${Math.max(widthPercent, 2)}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-lg bg-card p-6 shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-text-primary">Ticket promedio</h2>
-            <FileText className="h-5 w-5 text-primary" />
-          </div>
-          <p className="text-4xl font-bold text-primary">
-            {formatCurrency(ticket?.valor || 0)}
-          </p>
-          <p className="mt-2 text-sm text-text-secondary">
-            Total facturado: <span className="font-medium text-text-primary">{formatCurrency(ticket?.total || 0)}</span>
-            {' '}en <span className="font-medium text-text-primary">{ticket?.cantidad || 0}</span> facturas autorizadas
-          </p>
-          <p className={`mt-2 text-sm ${ticketVariation != null && ticketVariation >= 0 ? 'text-success' : 'text-text-secondary'}`}>
-            {ticketVariationLabel}
-          </p>
-        </div>
-      </div>
-
-      <div className="rounded-lg bg-card p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-primary">Top 10 clientes por facturacion</h2>
-          <Users className="h-5 w-5 text-primary" />
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Documento</TableHead>
-              <TableHead>Cantidad</TableHead>
-              <TableHead>Total</TableHead>
-              <TableHead>% participacion</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {topClientes.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-text-muted">No hay datos para el periodo seleccionado</TableCell>
-              </TableRow>
-            ) : (
-              topClientes.map((cliente) => (
-                <TableRow key={cliente.receptor_id}>
-                  <TableCell className="font-medium">{cliente.razon_social}</TableCell>
-                  <TableCell>{cliente.doc_nro}</TableCell>
-                  <TableCell>{cliente.cantidad}</TableCell>
-                  <TableCell>{formatCurrency(cliente.total || 0)}</TableCell>
-                  <TableCell>{cliente.porcentaje?.toFixed?.(2) || '0.00'}%</TableCell>
+          <div className="rounded-lg bg-card p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-text-primary">Top 10 clientes por facturacion</h2>
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Documento</TableHead>
+                  <TableHead>Cantidad</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead>% participacion</TableHead>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              </TableHeader>
+              <TableBody>
+                {topClientes.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-text-muted">No hay datos para el periodo seleccionado</TableCell>
+                  </TableRow>
+                ) : (
+                  topClientes.map((cliente) => (
+                    <TableRow key={cliente.receptor_id}>
+                      <TableCell className="font-medium">{cliente.razon_social}</TableCell>
+                      <TableCell>{cliente.doc_nro}</TableCell>
+                      <TableCell>{cliente.cantidad}</TableCell>
+                      <TableCell>{formatCurrency(cliente.total || 0)}</TableCell>
+                      <TableCell>{cliente.porcentaje?.toFixed?.(2) || '0.00'}%</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
 
       {/* Quick Actions */}
       <div className="rounded-lg bg-card p-6 shadow-sm">
