@@ -31,26 +31,41 @@ def get_stats():
     facturas_error = period_query.filter(Factura.estado == 'error').count()
     facturas_pendientes = period_query.filter(Factura.estado.in_(['borrador', 'pendiente'])).count()
 
-    total_mes = period_query.with_entities(func.sum(Factura.importe_total)).filter(
-        Factura.estado == 'autorizado'
-    ).scalar() or Decimal('0')
-
-    ticket_promedio = _build_ticket_promedio(
-        tenant_id=g.tenant_id,
-        period_start=period_start,
-        period_end=period_end,
-        historico=historico,
+    hide_sensitive = bool(
+        g.current_user.rol in ('operator', 'viewer')
+        and g.current_user.restringir_dashboard_sensible
     )
+
+    total_mes = None
+    ticket_promedio = None
+    facturacion_12_meses = []
+    top_clientes = []
+
+    if not hide_sensitive:
+        total_mes = period_query.with_entities(func.sum(Factura.importe_total)).filter(
+            Factura.estado == 'autorizado'
+        ).scalar() or Decimal('0')
+
+        ticket_promedio = _build_ticket_promedio(
+            tenant_id=g.tenant_id,
+            period_start=period_start,
+            period_end=period_end,
+            historico=historico,
+        )
+
+        facturacion_12_meses = _build_facturacion_12_meses(g.tenant_id, selected_month)
+        top_clientes = _build_top_clientes(g.tenant_id, period_start, period_end)
 
     return jsonify({
         'facturas_mes': facturas_mes,
         'autorizadas': facturas_autorizadas,
         'errores': facturas_error,
         'pendientes': facturas_pendientes,
-        'total_mes': float(total_mes),
-        'facturacion_12_meses': _build_facturacion_12_meses(g.tenant_id, selected_month),
-        'top_clientes': _build_top_clientes(g.tenant_id, period_start, period_end),
+        'total_mes': float(total_mes) if total_mes is not None else None,
+        'facturacion_12_meses': facturacion_12_meses,
+        'top_clientes': top_clientes,
         'ticket_promedio': ticket_promedio,
+        'sensitive_hidden': hide_sensitive,
         'filtros_aplicados': {
             'historico': historico,
             'month': selected_month.strftime('%Y-%m'),

@@ -157,3 +157,55 @@ class TestDashboardStats:
         payload = response.get_json()
         assert payload['facturas_mes'] == 1
         assert payload['total_mes'] == 1000.0
+
+    def test_dashboard_hides_sensitive_for_operator_when_restricted(self, client, operator_headers, operator_user, db, tenant, facturador, receptor):
+        operator_user.restringir_dashboard_sensible = True
+        db.session.commit()
+
+        _create_factura(db, tenant.id, facturador.id, receptor.id, date(2026, 1, 10), '1000.00', estado='autorizado')
+        db.session.commit()
+
+        response = client.get('/api/dashboard/stats?month=2026-01', headers=operator_headers)
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload['facturas_mes'] == 1
+        assert payload['autorizadas'] == 1
+        assert payload['sensitive_hidden'] is True
+        assert payload['total_mes'] is None
+        assert payload['facturacion_12_meses'] == []
+        assert payload['ticket_promedio'] is None
+        assert payload['top_clientes'] == []
+
+    def test_dashboard_hides_sensitive_for_viewer_when_restricted(self, client, viewer_headers, viewer_user, db, tenant, facturador, receptor):
+        viewer_user.restringir_dashboard_sensible = True
+        db.session.commit()
+
+        _create_factura(db, tenant.id, facturador.id, receptor.id, date(2026, 1, 10), '1000.00', estado='autorizado')
+        db.session.commit()
+
+        response = client.get('/api/dashboard/stats?month=2026-01', headers=viewer_headers)
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload['sensitive_hidden'] is True
+        assert payload['total_mes'] is None
+        assert payload['facturacion_12_meses'] == []
+        assert payload['ticket_promedio'] is None
+        assert payload['top_clientes'] == []
+
+    def test_dashboard_admin_still_sees_sensitive_when_restricted(self, client, auth_headers, admin_user, db, tenant, facturador, receptor):
+        admin_user.restringir_dashboard_sensible = True
+        db.session.commit()
+
+        _create_factura(db, tenant.id, facturador.id, receptor.id, date(2026, 1, 10), '1000.00', estado='autorizado')
+        db.session.commit()
+
+        response = client.get('/api/dashboard/stats?month=2026-01', headers=auth_headers)
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload['sensitive_hidden'] is False
+        assert payload['total_mes'] == 1000.0
+        assert len(payload['facturacion_12_meses']) == 12
+        assert payload['ticket_promedio'] is not None
