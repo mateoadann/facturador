@@ -15,6 +15,7 @@ import {
   ClipboardList,
   KeyRound,
   Mail,
+  LifeBuoy,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/sidebarStore'
@@ -46,6 +47,7 @@ const navItems = [
     items: [
       { icon: UserCog, label: 'Usuarios', href: '/usuarios', permission: 'usuarios:ver' },
       { icon: ClipboardList, label: 'Auditoría', href: '/auditoria', permission: 'auditoria:ver' },
+      { icon: LifeBuoy, label: 'Ayuda', href: '/ayuda', permission: 'dashboard:ver' },
     ],
   },
 ]

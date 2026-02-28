@@ -29,6 +29,7 @@ def create_app(config_class=Config):
     from .api.audit import audit_bp
     from .api.email import email_bp
     from .api.downloads import downloads_bp
+    from .api.help import help_bp
 
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
@@ -42,5 +43,6 @@ def create_app(config_class=Config):
     app.register_blueprint(audit_bp, url_prefix='/api/audit')
     app.register_blueprint(email_bp, url_prefix='/api/email')
     app.register_blueprint(downloads_bp, url_prefix='/api/downloads')
+    app.register_blueprint(help_bp, url_prefix='/api/help')
 
     return app

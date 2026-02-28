@@ -18,6 +18,7 @@ services:
     volumes:
       - ./backend:/app
       - ./arca_integration:/app/arca_integration
+      - ./docs:/docs:ro
       - facturador_arca_ta_cache:/var/lib/arca_ta_cache
 
   worker:

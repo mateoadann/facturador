@@ -12,6 +12,7 @@ const pageTitles = {
   '/consultar-comprobantes': 'Consultar Comprobantes',
   '/usuarios': 'Usuarios',
   '/auditoria': 'Auditoría',
+  '/ayuda': 'Ayuda',
   '/email': 'Configuración de Email',
 }
 
