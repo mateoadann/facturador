@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Download, Loader2, Mail, MailX, Send, SlidersHorizontal } from 'lucide-react'
+import { Download, Eye, Loader2, Mail, MailX, Send, SlidersHorizontal } from 'lucide-react'
 import { api } from '@/api/client'
 import {
   Button,
@@ -14,7 +14,7 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui'
-import { formatCUIT, formatCurrency, formatDate, formatComprobante } from '@/lib/utils'
+import { formatCUIT } from '@/lib/utils'
 import { useJobStatus } from '@/hooks/useJobStatus'
 import { usePermission } from '@/hooks/usePermission'
 import { toast } from '@/stores/toastStore'
@@ -22,6 +22,35 @@ import { useDownloadsStore } from '@/stores/downloadsStore'
 import BulkEmailModal from './BulkEmailModal'
 import BulkPdfDownloadModal from './BulkPdfDownloadModal'
 import FacturasFiltersSidebar from './FacturasFiltersSidebar'
+import FacturaViewModal from './FacturaViewModal'
+
+const TIPO_COMPROBANTE_LABELS = {
+  1: 'Factura A',
+  2: 'Nota de Debito A',
+  3: 'Nota de Credito A',
+  6: 'Factura B',
+  7: 'Nota de Debito B',
+  8: 'Nota de Credito B',
+  11: 'Factura C',
+  12: 'Nota de Debito C',
+  13: 'Nota de Credito C',
+}
+
+function formatDateShort(date) {
+  if (!date) return ''
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return String(date)
+  const day = String(parsed.getDate()).padStart(2, '0')
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const year = String(parsed.getFullYear()).slice(-2)
+  return `${day}/${month}/${year}`
+}
+
+function formatComprobanteSimple(tipo, numero) {
+  const tipoStr = TIPO_COMPROBANTE_LABELS[tipo] || `T${tipo}`
+  if (numero == null) return tipoStr
+  return `${tipoStr} ${Number(numero)}`
+}
 
 function Facturas() {
   const queryClient = useQueryClient()
@@ -41,6 +70,7 @@ function Facturas() {
   const [isBulkPdfModalOpen, setIsBulkPdfModalOpen] = useState(false)
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [emailTaskId, setEmailTaskId] = useState(null)
+  const [selectedFacturaId, setSelectedFacturaId] = useState(null)
   const canSendEmail = usePermission('email:enviar')
   const canDownloadComprobante = usePermission('facturas:comprobante')
   const addZipTask = useDownloadsStore((s) => s.addZipTask)
@@ -364,11 +394,9 @@ function Facturas() {
           <TableHeader>
             <TableRow>
               <TableHead>Comprobante</TableHead>
-              <TableHead>Facturador</TableHead>
               <TableHead>Receptor</TableHead>
               <TableHead>Fecha</TableHead>
-              <TableHead>Importe</TableHead>
-              <TableHead>CAE</TableHead>
+              <TableHead>Ver</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Email</TableHead>
               <TableHead className="w-36">Acciones</TableHead>
@@ -377,13 +405,13 @@ function Facturas() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : facturas.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-text-muted">
+                <TableCell colSpan={7} className="text-center text-text-muted">
                   No se encontraron facturas
                 </TableCell>
               </TableRow>
@@ -395,20 +423,11 @@ function Facturas() {
                 <TableRow key={factura.id}>
                   <TableCell>
                     <span className="font-medium">
-                      {formatComprobante(
+                      {formatComprobanteSimple(
                         factura.tipo_comprobante,
-                        factura.punto_venta,
                         factura.numero_comprobante
                       )}
                     </span>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{factura.facturador?.razon_social}</p>
-                      <p className="text-xs text-text-muted">
-                        {formatCUIT(factura.facturador?.cuit)}
-                      </p>
-                    </div>
                   </TableCell>
                   <TableCell>
                     <div>
@@ -418,21 +437,16 @@ function Facturas() {
                       </p>
                     </div>
                   </TableCell>
-                  <TableCell>{formatDate(factura.fecha_emision)}</TableCell>
-                  <TableCell className="font-medium">
-                    {formatCurrency(factura.importe_total)}
-                  </TableCell>
+                  <TableCell>{formatDateShort(factura.fecha_emision)}</TableCell>
                   <TableCell>
-                    {factura.cae ? (
-                      <div>
-                        <p className="font-mono text-xs">{factura.cae}</p>
-                        <p className="text-xs text-text-muted">
-                          Vto: {formatDate(factura.cae_vencimiento)}
-                        </p>
-                      </div>
-                    ) : (
-                      <span className="text-text-muted">-</span>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setSelectedFacturaId(factura.id)}
+                    >
+                      <Eye className="h-[16px] w-[16px]" />
+                      Ver
+                    </Button>
                   </TableCell>
                   <TableCell>{getEstadoBadge(factura.estado, factura)}</TableCell>
                   <TableCell>
@@ -519,6 +533,12 @@ function Facturas() {
         facturadores={facturadores}
         lotes={lotesFiltros}
         receptores={receptores}
+      />
+
+      <FacturaViewModal
+        isOpen={!!selectedFacturaId}
+        onClose={() => setSelectedFacturaId(null)}
+        facturaId={selectedFacturaId}
       />
     </div>
   )
