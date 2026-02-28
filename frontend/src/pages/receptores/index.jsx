@@ -127,21 +127,27 @@ function Receptores() {
   }
 
   const handleConsultarCuit = async () => {
-    if (!formData.doc_nro) return
+    if (!formData.doc_nro) {
+      toast.warning('CUIT requerido', 'Ingresá un CUIT/CUIL para consultar en ARCA')
+      return
+    }
 
     try {
       const response = await api.receptores.consultarCuit(formData.doc_nro)
       if (response.data.success && response.data.data) {
-        const data = response.data.data
-        setFormData({
-          ...formData,
-          razon_social: data.razon_social || formData.razon_social,
-          direccion: data.direccion || formData.direccion,
-          condicion_iva: data.condicion_iva || formData.condicion_iva,
-        })
+        const padronData = response.data.data
+        setFormData((prev) => ({
+          ...prev,
+          razon_social: padronData.razon_social || prev.razon_social,
+          direccion: padronData.direccion || prev.direccion,
+          condicion_iva: padronData.condicion_iva || prev.condicion_iva,
+        }))
+        toast.success('Datos encontrados', 'Se completaron los datos del receptor desde ARCA')
+      } else {
+        toast.warning('Sin resultados', response.data.error || 'No se encontraron datos para ese CUIT')
       }
     } catch (error) {
-      console.error('Error al consultar CUIT:', error)
+      toast.error('Error al consultar CUIT', error.response?.data?.error || 'No se pudo consultar en ARCA')
     }
   }
 
@@ -322,17 +328,19 @@ function Receptores() {
         }
       >
         <div className="space-y-4">
-          <div className="flex items-end gap-3">
-            <Input
-              label="CUIT/CUIL"
-              placeholder="20-12345678-9"
-              value={formData.doc_nro}
-              onChange={(e) => setFormData({ ...formData, doc_nro: e.target.value })}
-              className="flex-1"
-            />
-            <Button variant="secondary" onClick={handleConsultarCuit}>
-              Buscar
-            </Button>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-primary">CUIT/CUIL</label>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              <Input
+                placeholder="20-12345678-9"
+                value={formData.doc_nro}
+                onChange={(e) => setFormData({ ...formData, doc_nro: e.target.value })}
+                className="w-full"
+              />
+              <Button variant="secondary" className="h-10 shrink-0 px-5" onClick={handleConsultarCuit}>
+                Buscar
+              </Button>
+            </div>
           </div>
 
           <Input

@@ -298,3 +298,58 @@ class TestImportReceptores:
         persisted_other = Receptor.query.filter_by(id=other_receptor.id).first()
         assert persisted_other.razon_social == 'Otro Tenant SA'
         assert persisted_other.email == 'other@test.com'
+
+
+class TestConsultarCuit:
+    def test_consultar_cuit_retorna_payload_plano(self, client, auth_headers, facturador, db, monkeypatch):
+        facturador.cert_encrypted = b'cert'
+        facturador.key_encrypted = b'key'
+        db.session.commit()
+
+        class _FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            def consultar_padron(self, cuit):
+                return {
+                    'success': True,
+                    'data': {
+                        'cuit': cuit,
+                        'razon_social': 'Cliente Desde ARCA SA',
+                        'direccion': 'Calle ARCA 123',
+                        'condicion_iva': 'IVA Responsable Inscripto',
+                    }
+                }
+
+        monkeypatch.setattr('app.api.receptores.decrypt_certificate', lambda _value: b'decrypted')
+        monkeypatch.setattr('arca_integration.ArcaClient', _FakeClient)
+
+        response = client.post('/api/receptores/consultar-cuit', headers=auth_headers, json={'cuit': '30-12345678-9'})
+
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload['success'] is True
+        assert payload['data']['razon_social'] == 'Cliente Desde ARCA SA'
+        assert payload['data']['direccion'] == 'Calle ARCA 123'
+
+    def test_consultar_cuit_retorna_404_si_no_encuentra(self, client, auth_headers, facturador, db, monkeypatch):
+        facturador.cert_encrypted = b'cert'
+        facturador.key_encrypted = b'key'
+        db.session.commit()
+
+        class _FakeClient:
+            def __init__(self, **kwargs):
+                pass
+
+            def consultar_padron(self, cuit):
+                return {'success': False, 'error': 'Persona no encontrada'}
+
+        monkeypatch.setattr('app.api.receptores.decrypt_certificate', lambda _value: b'decrypted')
+        monkeypatch.setattr('arca_integration.ArcaClient', _FakeClient)
+
+        response = client.post('/api/receptores/consultar-cuit', headers=auth_headers, json={'cuit': '30-99999999-9'})
+
+        assert response.status_code == 404
+        payload = response.get_json()
+        assert payload['success'] is False
+        assert 'Persona no encontrada' in payload['error']

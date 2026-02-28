@@ -302,9 +302,15 @@ def consultar_cuit():
 
         result = client.consultar_padron(cuit)
 
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error') or 'No se encontraron datos para el CUIT consultado'
+            }), 404
+
         return jsonify({
             'success': True,
-            'data': result
+            'data': result.get('data', {})
         }), 200
 
     except Exception as e:

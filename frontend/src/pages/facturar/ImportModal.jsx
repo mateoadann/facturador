@@ -12,6 +12,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
   const [etiqueta, setEtiqueta] = useState('')
   const [errors, setErrors] = useState([])
   const [isTemplateOpen, setIsTemplateOpen] = useState(false)
+  const [isFormatoOpen, setIsFormatoOpen] = useState(false)
 
   const importMutation = useMutation({
     mutationFn: async () => {
@@ -46,6 +47,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
     setEtiqueta('')
     setErrors([])
     setIsTemplateOpen(false)
+    setIsFormatoOpen(false)
     onClose()
   }
 
@@ -148,22 +150,31 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
 
         {/* Step 2: Format info */}
         <div>
-          <h3 className="mb-3 text-sm font-medium text-text-primary">
-            2. Formato esperado
-          </h3>
-          <div className="rounded-md bg-secondary/50 p-3 text-xs text-text-secondary">
-            <p className="mb-2">
-              Podés completar el template .xlsx y luego exportarlo como CSV (UTF-8) para importarlo.
-            </p>
-            <p className="mb-2">Columnas requeridas:</p>
-            <code className="block text-text-muted">
-              facturador_cuit, receptor_cuit, tipo_comprobante, concepto,
-              fecha_emision, importe_total, importe_neto
-            </code>
-            <p className="mt-2">
-              La condición IVA del receptor se determina automáticamente desde el receptor/padrón.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsFormatoOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-left text-sm font-medium text-text-primary hover:bg-secondary/50"
+          >
+            <span>2. Formato esperado</span>
+            <ChevronDown
+              className={`h-4 w-4 text-text-secondary transition-transform ${isFormatoOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {isFormatoOpen && (
+            <div className="mt-3 rounded-md bg-secondary/50 p-3 text-xs text-text-secondary">
+              <p className="mb-2">
+                Podés completar el template .xlsx y luego exportarlo como CSV (UTF-8) para importarlo.
+              </p>
+              <p className="mb-2">Columnas requeridas:</p>
+              <code className="block text-text-muted">
+                facturador_cuit, receptor_cuit, tipo_comprobante, concepto,
+                fecha_emision, importe_total, importe_neto
+              </code>
+              <p className="mt-2">
+                La condición IVA del receptor se determina automáticamente desde el receptor/padrón.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Step 3: Label */}

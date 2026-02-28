@@ -356,14 +356,17 @@ class ArcaClient:
             self._ensure_settings()
             ws = self.ws_constancia
 
-            data = {
-                'token': ws.token,
-                'sign': ws.sign,
-                'cuitRepresentada': ws.cuit,
-                'idPersona': int(cuit_consulta.replace('-', '')),
-            }
-
-            result = ws.send_request('getPersona_v2', data)
+            cuit_int = int(cuit_consulta.replace('-', ''))
+            if hasattr(ws, 'get_persona'):
+                result = ws.get_persona(cuit_int)
+            else:
+                data = {
+                    'token': ws.token,
+                    'sign': ws.sign,
+                    'cuitRepresentada': ws.cuit,
+                    'idPersona': cuit_int,
+                }
+                result = ws.send_request('getPersona_v2', data)
 
             if hasattr(result, 'personaReturn') and result.personaReturn:
                 persona = result.personaReturn
