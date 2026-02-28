@@ -178,4 +178,9 @@ export const api = {
     testSend: (data) => client.post('/email/test-send', data),
     preview: (data) => client.post('/email/preview', data),
   },
+
+  // Ayuda
+  help: {
+    getImportCsvGuide: () => client.get('/help/guia-importacion-csv', { responseType: 'text' }),
+  },
 }

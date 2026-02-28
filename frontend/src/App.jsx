@@ -13,6 +13,7 @@ import ConsultarComprobantes from './pages/consultar-comprobantes'
 import Usuarios from './pages/usuarios'
 import Auditoria from './pages/auditoria'
 import Email from './pages/email'
+import Ayuda from './pages/ayuda'
 import ZipDownloadsWatcher from './components/downloads/ZipDownloadsWatcher'
 
 function PrivateRoute({ children }) {
@@ -80,6 +81,9 @@ function App() {
           } />
           <Route path="email" element={
             <ProtectedRoute permission="email:configurar"><Email /></ProtectedRoute>
+          } />
+          <Route path="ayuda" element={
+            <ProtectedRoute permission="dashboard:ver"><Ayuda /></ProtectedRoute>
           } />
         </Route>
       </Routes>
