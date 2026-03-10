@@ -104,11 +104,12 @@ function ItemsModal({ factura, onClose, onSaved }) {
 
   useEffect(() => {
     if (isLoadingItems) return
+    const sinIVA = factura?.items_sin_iva
     const mappedItems = (items || []).map((item) => ({
       descripcion: item.descripcion || '',
       cantidad: String(item.cantidad ?? 0),
       precio_unitario: String(item.precio_unitario ?? 0),
-      alicuota_iva_id: Number(item.alicuota_iva_id || 5),
+      alicuota_iva_id: sinIVA ? 3 : Number(item.alicuota_iva_id || 5),
     }))
     setFormData((prev) => {
       if (!prev) return prev
@@ -117,7 +118,7 @@ function ItemsModal({ factura, onClose, onSaved }) {
         items: mappedItems.length > 0 ? mappedItems : [{ ...EMPTY_ITEM }],
       }
     })
-  }, [items, isLoadingItems])
+  }, [items, isLoadingItems, factura?.items_sin_iva])
 
   const saveMutation = useMutation({
     mutationFn: (payload) => api.facturas.update(factura.id, payload),
@@ -368,11 +369,15 @@ function ItemsModal({ factura, onClose, onSaved }) {
                       label="IVA"
                       value={String(item.alicuota_iva_id)}
                       onChange={(e) => updateItemField(idx, 'alicuota_iva_id', Number(e.target.value))}
-                      disabled={!canSave}
+                      disabled={!canSave || factura.items_sin_iva}
                     >
-                      {ALICUOTA_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
+                      {factura.items_sin_iva ? (
+                        <option value={3}>0% (Sin discriminar)</option>
+                      ) : (
+                        ALICUOTA_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))
+                      )}
                     </Select>
                   </div>
                   <div className="md:col-span-1 flex items-end justify-end">
