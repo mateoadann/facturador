@@ -1,11 +1,13 @@
 import logging
+import json
+import os
 from datetime import datetime, date
 from contextlib import suppress
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from time import sleep
 from uuid import UUID
 
-from arca_integration.constants import ALICUOTAS_IVA, CONDICIONES_IVA
+from arca_integration.constants import ALICUOTAS_IVA, CONDICIONES_IVA, TIPO_CBTE_CLASE
 from arca_integration.exceptions import ArcaAuthError, ArcaError, ArcaNetworkError, ArcaValidationError
 from celery import shared_task
 
@@ -13,11 +15,29 @@ from ..extensions import db
 from ..models import Lote, Factura, Facturador
 from ..services.comprobante_rules import (
     es_comprobante_tipo_c,
+    es_comprobante_tipo_b,
     normalizar_importes_para_tipo_c,
 )
 from ..services.encryption import decrypt_certificate
 
 logger = logging.getLogger(__name__)
+
+
+def _verbose_arca_logs_enabled() -> bool:
+    return os.getenv('ARCA_VERBOSE_LOGS', 'false').strip().lower() == 'true'
+
+
+def _log_facturacion_trace(event: str, **fields):
+    if not _verbose_arca_logs_enabled():
+        return
+
+    payload = {
+        'event': event,
+        'environment': os.getenv('FLASK_ENV', 'development'),
+        **fields,
+    }
+
+    logger.info('FACTURACION_TRACE %s', json.dumps(_to_json_safe(payload), ensure_ascii=False, separators=(',', ':')))
 
 
 @shared_task(bind=True)
@@ -52,6 +72,14 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
         ok = 0
         errors = 0
 
+        _log_facturacion_trace(
+            'lote.start',
+            task_id=str(getattr(self.request, 'id', '')),
+            lote_id=str(lote_id),
+            tenant_id=str(tenant_id),
+            total_facturas=total,
+        )
+
         # Agrupar facturas por facturador para reutilizar conexión
         facturas_por_facturador = {}
         for factura in facturas:
@@ -60,6 +88,15 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             facturas_por_facturador[factura.facturador_id].append(factura)
 
         for facturador_id, facturas_grupo in facturas_por_facturador.items():
+            _log_facturacion_trace(
+                'facturador.group.start',
+                task_id=str(getattr(self.request, 'id', '')),
+                lote_id=str(lote_id),
+                tenant_id=str(tenant_id),
+                facturador_id=str(facturador_id),
+                facturas_grupo=len(facturas_grupo),
+            )
+
             facturador = Facturador.query.filter_by(
                 id=facturador_id,
                 tenant_id=tenant_id,
@@ -72,6 +109,13 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                     factura.error_mensaje = 'Facturador sin certificados'
                     errors += 1
                     processed += 1
+                    _log_facturacion_trace(
+                        'factura.skip.sin_certificados',
+                        task_id=str(getattr(self.request, 'id', '')),
+                        lote_id=str(lote_id),
+                        factura_id=str(factura.id),
+                        facturador_id=str(facturador_id),
+                    )
                     self.update_state(state='PROGRESS', meta={
                         'current': processed,
                         'total': total,
@@ -100,6 +144,16 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                 # Procesar cada factura
                 for factura in facturas_grupo:
                     try:
+                        _log_facturacion_trace(
+                            'factura.start',
+                            task_id=str(getattr(self.request, 'id', '')),
+                            lote_id=str(lote_id),
+                            factura_id=str(factura.id),
+                            facturador_id=str(facturador.id),
+                            tipo_comprobante=factura.tipo_comprobante,
+                            punto_venta=factura.punto_venta,
+                        )
+
                         locked_facturador = _lock_facturador_sequence(
                             tenant_id=tenant_id,
                             facturador_id=facturador.id,
@@ -110,10 +164,25 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                         result = procesar_factura(client, factura, locked_facturador)
 
                         if _is_retryable_wsaa_error(result):
+                            _log_facturacion_trace(
+                                'factura.retry.wsaa',
+                                task_id=str(getattr(self.request, 'id', '')),
+                                lote_id=str(lote_id),
+                                factura_id=str(factura.id),
+                                error_message=result.get('error_message'),
+                            )
                             sleep(5)
                             result = procesar_factura(client, factura, locked_facturador)
 
                         if _is_retryable_sequence_error(result):
+                            _log_facturacion_trace(
+                                'factura.retry.secuencia',
+                                task_id=str(getattr(self.request, 'id', '')),
+                                lote_id=str(lote_id),
+                                factura_id=str(factura.id),
+                                error_code=result.get('error_code'),
+                                error_message=result.get('error_message'),
+                            )
                             _sync_factura_date_with_last_authorized(client, factura)
                             sleep(1)
                             result = procesar_factura(client, factura, locked_facturador)
@@ -126,6 +195,15 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                             factura.arca_response = _to_json_safe(result.get('response'))
                             ok += 1
 
+                            _log_facturacion_trace(
+                                'factura.success',
+                                task_id=str(getattr(self.request, 'id', '')),
+                                lote_id=str(lote_id),
+                                factura_id=str(factura.id),
+                                numero_comprobante=factura.numero_comprobante,
+                                cae=factura.cae,
+                            )
+
                             # Enviar email automáticamente si el receptor tiene email
                             if factura.receptor and factura.receptor.email:
                                 from .email import enviar_factura_email
@@ -137,11 +215,28 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                             factura.arca_response = _to_json_safe(result.get('response'))
                             errors += 1
 
+                            _log_facturacion_trace(
+                                'factura.error',
+                                task_id=str(getattr(self.request, 'id', '')),
+                                lote_id=str(lote_id),
+                                factura_id=str(factura.id),
+                                error_code=factura.error_codigo,
+                                error_message=factura.error_mensaje,
+                            )
+
                     except (ValueError, RuntimeError, ConnectionError, TimeoutError, OSError) as e:
                         factura.estado = 'error'
                         factura.error_codigo = 'procesamiento_error'
                         factura.error_mensaje = str(e)
                         errors += 1
+
+                        _log_facturacion_trace(
+                            'factura.exception',
+                            task_id=str(getattr(self.request, 'id', '')),
+                            lote_id=str(lote_id),
+                            factura_id=str(factura.id),
+                            error_message=str(e),
+                        )
 
                     processed += 1
                     db.session.commit()
@@ -164,6 +259,14 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                 ValueError,
             ) as e:
                 # Error de conexión general
+                _log_facturacion_trace(
+                    'facturador.group.error',
+                    task_id=str(getattr(self.request, 'id', '')),
+                    lote_id=str(lote_id),
+                    tenant_id=str(tenant_id),
+                    facturador_id=str(facturador_id),
+                    error_message=str(e),
+                )
                 for factura in facturas_grupo:
                     factura.estado = 'error'
                     factura.error_codigo = 'conexion_arca'
@@ -189,6 +292,16 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
         lote.processed_at = datetime.utcnow()
         db.session.commit()
 
+        _log_facturacion_trace(
+            'lote.completed',
+            task_id=str(getattr(self.request, 'id', '')),
+            lote_id=str(lote_id),
+            tenant_id=str(tenant_id),
+            processed=processed,
+            ok=ok,
+            errors=errors,
+        )
+
         return {
             'status': 'completed',
             'processed': processed,
@@ -198,6 +311,13 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
         }
     except Exception as exc:
         logger.exception('Fallo inesperado procesando lote %s', lote_id)
+        _log_facturacion_trace(
+            'lote.exception',
+            task_id=str(getattr(self.request, 'id', '')),
+            lote_id=str(lote_id),
+            tenant_id=str(tenant_id),
+            error_message=str(exc),
+        )
         db.session.rollback()
         lote_fallback = Lote.query.filter_by(id=lote_id, tenant_id=tenant_id).first()
         if lote_fallback:
@@ -213,6 +333,15 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
     from arca_integration.services import WSFEService
 
     try:
+        _log_facturacion_trace(
+            'factura.build_request.start',
+            factura_id=str(factura.id),
+            tenant_id=str(factura.tenant_id),
+            facturador_id=str(facturador.id),
+            tipo_comprobante=factura.tipo_comprobante,
+            punto_venta=factura.punto_venta,
+        )
+
         # Obtener último número de comprobante
         ultimo = client.fe_comp_ultimo_autorizado(
             punto_venta=factura.punto_venta,
@@ -241,13 +370,21 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
 
         _autocompletar_condicion_iva_receptor(client, factura)
         condicion_iva_receptor_id = _resolve_condicion_iva_receptor_id(factura)
+        
+        # RG 5616: CondicionIVAReceptorId es obligatorio para A, B y C
         if condicion_iva_receptor_id is None:
             raise ValueError(
                 f'No se pudo determinar la condicion IVA del receptor {factura.receptor.doc_nro}. '
                 'Completa la condicion IVA del receptor desde el modulo Receptores.'
             )
-
+        
+        # Para Factura B: siempre usar condición 5 (Consumidor Final)
+        # sin importar la condición real del receptor
+        if es_comprobante_tipo_b(factura.tipo_comprobante):
+            condicion_iva_receptor_id = 5
+        
         builder.set_condicion_iva_receptor(condicion_iva_receptor_id)
+        
         importe_neto, importe_iva, importe_total = normalizar_importes_para_tipo_c(
             factura.tipo_comprobante,
             factura.importe_neto,
@@ -280,8 +417,7 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
         # Agregar IVA (soporta múltiples alícuotas por item)
         if (
             not es_comprobante_tipo_c(factura.tipo_comprobante)
-            and factura.importe_iva
-            and factura.importe_iva > Decimal('0')
+            and importe_iva > Decimal('0')
         ):
             iva_items = _build_iva_from_items(factura)
 
@@ -293,21 +429,42 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
                         importe=iva_item['Importe'],
                     )
             else:
-                # Fallback para facturas sin items detallados
+                # Fallback para facturas sin items detallados - usar valores normalizados
                 builder.add_iva(
                     alicuota_id=5,
-                    base_imponible=factura.importe_neto,
-                    importe=factura.importe_iva
+                    base_imponible=importe_neto,
+                    importe=importe_iva
                 )
 
         request_data = builder.build()
+
+        _log_facturacion_trace(
+            'factura.build_request.done',
+            factura_id=str(factura.id),
+            numero_comprobante=numero_comprobante,
+            tipo_comprobante=factura.tipo_comprobante,
+            punto_venta=factura.punto_venta,
+        )
 
         # Guardar request
         factura.arca_request = _to_json_safe(request_data)
 
         # Enviar a ARCA
         wsfe = WSFEService(client)
+        _log_facturacion_trace(
+            'factura.arca.send',
+            factura_id=str(factura.id),
+            method='FECAESolicitar',
+            wsid='wsfe',
+        )
         response = wsfe.autorizar(request_data)
+
+        _log_facturacion_trace(
+            'factura.arca.response',
+            factura_id=str(factura.id),
+            success=bool(response.get('success')),
+            error_code=response.get('error_code'),
+        )
 
         if response.get('cae'):
             return {
@@ -485,6 +642,22 @@ def _build_iva_from_items(factura: Factura) -> list[dict]:
     if not factura.items:
         return []
 
+    # Caso especial: Factura B sin IVA discriminado
+    # Usar importe_neto directo de la factura como BaseImp
+    if es_comprobante_tipo_b(factura.tipo_comprobante) and getattr(factura, 'items_sin_iva', False):
+        base = Decimal(str(factura.importe_neto or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        iva_total = Decimal(str(factura.importe_iva or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        
+        if base > 0 and iva_total > 0:
+            alicuota_id = 5  # 21% - alícuota por defecto para Factura B
+            return [{
+                'Id': alicuota_id,
+                'BaseImp': base,
+                'Importe': iva_total,
+            }]
+        return []
+
+    # Caso normal: calcular desde items
     bases_por_alicuota: dict[int, Decimal] = {}
 
     for item in factura.items:
@@ -492,7 +665,7 @@ def _build_iva_from_items(factura: Factura) -> list[dict]:
         if alicuota_id not in ALICUOTAS_IVA:
             continue
 
-        base = Decimal(str(item.subtotal))
+        base = Decimal(str(item.importe_neto or item.subtotal))
         bases_por_alicuota[alicuota_id] = bases_por_alicuota.get(alicuota_id, Decimal('0')) + base
 
     if not bases_por_alicuota:
@@ -523,11 +696,19 @@ def _build_iva_from_items(factura: Factura) -> list[dict]:
 
 
 def _resolve_condicion_iva_receptor_id(factura: Factura) -> int | None:
-    """Resuelve CondicionIVAReceptorId para WSFE (RG 5616)."""
+    """Resuelve CondicionIVAReceptorId para WSFE (RG 5616).
+    
+    El campo es obligatorio para todas las clases de comprobante (A, B, C).
+    """
     receptor = factura.receptor
     if not receptor:
         return None
-
+    
+    # Prioridad 1: Usar el ID guardado directamente
+    if receptor.condicion_iva_id is not None:
+        return receptor.condicion_iva_id
+    
+    # Prioridad 2: Resolver desde el nombre (backwards compatibility)
     raw = (receptor.condicion_iva or '').strip()
     if raw:
         if raw.isdigit():
@@ -551,17 +732,29 @@ def _resolve_condicion_iva_receptor_id(factura: Factura) -> int | None:
     return 5
 
 
+def _get_condicion_iva_id_from_name(nombre: str) -> int | None:
+    """Convierte nombre de condición IVA a ID."""
+    if not nombre:
+        return None
+    normalized = _normalize_text(nombre)
+    for cond_id, desc in CONDICIONES_IVA.items():
+        if _normalize_text(desc) == normalized:
+            return cond_id
+    return None
+
+
 def _normalize_text(value: str) -> str:
     return ' '.join(value.lower().replace('–', '-').split())
 
 
 def _autocompletar_condicion_iva_receptor(client, factura: Factura) -> None:
-    """Intenta completar condicion_iva del receptor desde padrón ARCA."""
+    """Intenta completar condicion_iva_id del receptor desde padrón ARCA."""
     receptor = factura.receptor
     if not receptor:
         return
-
-    if receptor.condicion_iva and _resolve_condicion_iva_receptor_id(factura) is not None:
+    
+    # Si ya tiene ID, no necesita consultar
+    if receptor.condicion_iva_id is not None:
         return
 
     if receptor.doc_tipo not in (80, 86, 87):
@@ -579,7 +772,8 @@ def _autocompletar_condicion_iva_receptor(client, factura: Factura) -> None:
         data = result.get('data') or {}
         condicion_iva = data.get('condicion_iva')
         if condicion_iva:
-            receptor.condicion_iva = condicion_iva
+            # Guardar nombre en campo legacy y resolver ID
+            receptor.condicion_iva_id = _get_condicion_iva_id_from_name(condicion_iva)
 
         if data.get('razon_social') and (
             not receptor.razon_social or receptor.razon_social.startswith('CUIT ')
