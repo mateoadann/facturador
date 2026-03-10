@@ -2,6 +2,8 @@ import os
 import pickle
 import time
 import tempfile
+import json
+import logging
 
 from arca_integration.client import ArcaClient
 
@@ -81,6 +83,143 @@ class TestArcaClientTAFallback:
 
         assert isinstance(ws, _FakeWS)
         assert calls['count'] == 2
+
+
+class _FakeResultNode:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+class _FakeWSForLogs:
+    def __init__(self):
+        self.token = 'token-test-123'
+        self.sign = 'sign-test-456'
+        self.cuit = '20409378472'
+        self.last_data = None
+
+    def get_type(self, _name):
+        return {}
+
+    def send_request(self, _method_name, data):
+        self.last_data = data
+        det = _FakeResultNode(
+            CAE='86080011696158',
+            CAEFchVto='20260307',
+            CbteDesde=483,
+            Resultado='A',
+            Observaciones=None,
+        )
+        return _FakeResultNode(
+            FeCabResp=_FakeResultNode(Resultado='A', Reproceso='N'),
+            FeDetResp=_FakeResultNode(FECAEDetResponse=[det]),
+            Errors=None,
+        )
+
+
+class TestArcaVerboseLogs:
+    def test_logs_request_response_when_enabled_and_omits_token_sign(self, monkeypatch, caplog):
+        monkeypatch.setenv('ARCA_VERBOSE_LOGS', 'true')
+        monkeypatch.setenv('ARCA_VERBOSE_INCLUDE_RAW', 'true')
+        monkeypatch.setenv('FLASK_ENV', 'development')
+
+        client = ArcaClient(
+            cuit='20123456789',
+            cert=b'cert',
+            key=b'key',
+            ambiente='testing',
+        )
+
+        fake_ws = _FakeWSForLogs()
+        client._wsfe = fake_ws
+
+        request_data = {
+            'FeCAEReq': {
+                'FeCabReq': {'CantReg': 1, 'PtoVta': 1, 'CbteTipo': 1},
+                'FeDetReq': {
+                    'FECAEDetRequest': {
+                        'Concepto': 1,
+                        'DocTipo': 80,
+                        'DocNro': 33693450239,
+                    }
+                },
+            }
+        }
+
+        with caplog.at_level(logging.INFO, logger='arca_integration.client'):
+            response = client.fe_cae_solicitar(request_data)
+
+        assert response['resultado'] == 'A'
+        logs = [r.message for r in caplog.records if r.message.startswith('ARCA_VERBOSE ')]
+        assert logs, 'Se esperaba al menos un log ARCA_VERBOSE'
+
+        payloads = [json.loads(entry.split('ARCA_VERBOSE ', 1)[1]) for entry in logs]
+        request_payload = next(p for p in payloads if p.get('event') == 'arca.ws.request' and p.get('method') == 'FECAESolicitar')
+
+        assert request_payload['environment'] == 'dev'
+        assert request_payload['wsid'] == 'wsfe'
+        assert request_payload['params']['Auth']['Cuit'] == '20409378472'
+        assert 'Token' not in request_payload['params']['Auth']
+        assert 'Sign' not in request_payload['params']['Auth']
+
+        response_payloads = [p for p in payloads if p.get('event') == 'arca.ws.response' and p.get('method') == 'FECAESolicitar']
+        assert any(p.get('stage') == 'raw' for p in response_payloads)
+        assert any(p.get('stage') == 'parsed' for p in response_payloads)
+
+    def test_skips_raw_response_stage_when_include_raw_disabled(self, monkeypatch, caplog):
+        monkeypatch.setenv('ARCA_VERBOSE_LOGS', 'true')
+        monkeypatch.setenv('ARCA_VERBOSE_INCLUDE_RAW', 'false')
+
+        client = ArcaClient(
+            cuit='20123456789',
+            cert=b'cert',
+            key=b'key',
+            ambiente='testing',
+        )
+
+        client._wsfe = _FakeWSForLogs()
+
+        request_data = {
+            'FeCAEReq': {
+                'FeCabReq': {'CantReg': 1, 'PtoVta': 1, 'CbteTipo': 1},
+                'FeDetReq': {'FECAEDetRequest': {'Concepto': 1, 'DocTipo': 80, 'DocNro': 33693450239}},
+            }
+        }
+
+        with caplog.at_level(logging.INFO, logger='arca_integration.client'):
+            client.fe_cae_solicitar(request_data)
+
+        logs = [r.message for r in caplog.records if r.message.startswith('ARCA_VERBOSE ')]
+        payloads = [json.loads(entry.split('ARCA_VERBOSE ', 1)[1]) for entry in logs]
+        response_payloads = [p for p in payloads if p.get('event') == 'arca.ws.response' and p.get('method') == 'FECAESolicitar']
+
+        assert not any(p.get('stage') == 'raw' for p in response_payloads)
+        assert any(p.get('stage') == 'parsed' for p in response_payloads)
+
+    def test_does_not_log_when_disabled(self, monkeypatch, caplog):
+        monkeypatch.setenv('ARCA_VERBOSE_LOGS', 'false')
+
+        client = ArcaClient(
+            cuit='20123456789',
+            cert=b'cert',
+            key=b'key',
+            ambiente='testing',
+        )
+
+        client._wsfe = _FakeWSForLogs()
+
+        request_data = {
+            'FeCAEReq': {
+                'FeCabReq': {'CantReg': 1, 'PtoVta': 1, 'CbteTipo': 1},
+                'FeDetReq': {'FECAEDetRequest': {'Concepto': 1, 'DocTipo': 80, 'DocNro': 33693450239}},
+            }
+        }
+
+        with caplog.at_level(logging.INFO, logger='arca_integration.client'):
+            client.fe_cae_solicitar(request_data)
+
+        logs = [r.message for r in caplog.records if r.message.startswith('ARCA_VERBOSE ')]
+        assert not logs
 
     def test_ws_constancia_applies_same_ta_fallback(self, monkeypatch):
         client = ArcaClient(

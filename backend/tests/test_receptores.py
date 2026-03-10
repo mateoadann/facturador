@@ -197,8 +197,8 @@ class TestImportReceptores:
         assert data['errores'] == []
 
     def test_import_receptores_upsert_updates_existing(self, client, auth_headers, receptor):
-        csv_content = """doc nro,razón social,condicion iva,email,dirección
-30-11111111-1,Receptor Actualizado SA,Consumidor Final,actualizado@test.com,Nueva 999
+        csv_content = """doc nro,razón social,condicion_iva_id,email,dirección
+30-11111111-1,Receptor Actualizado SA,5,actualizado@test.com,Nueva 999
 """
         response = client.post(
             '/api/receptores/import',
@@ -214,7 +214,7 @@ class TestImportReceptores:
 
         updated = client.get(f'/api/receptores/{receptor.id}', headers=auth_headers).get_json()
         assert updated['razon_social'] == 'Receptor Actualizado SA'
-        assert updated['condicion_iva'] == 'Consumidor Final'
+        assert updated['condicion_iva_id'] == 5
         assert updated['email'] == 'actualizado@test.com'
         assert updated['direccion'] == 'Nueva 999'
 
@@ -274,7 +274,7 @@ class TestImportReceptores:
             doc_tipo=80,
             doc_nro='30555555555',
             razon_social='Otro Tenant SA',
-            condicion_iva='IVA Responsable Inscripto',
+            condicion_iva_id=1,  # IVA Responsable Inscripto
             email='other@test.com',
             direccion='Otra calle 1',
             activo=True
@@ -283,7 +283,7 @@ class TestImportReceptores:
         db.session.commit()
 
         csv_content = """cuit,razon_social,condicion_iva,email,direccion
-30-55555555-5,Mi Tenant SA,Consumidor Final,mio@test.com,Mi calle 2
+30-55555555-5,Mi Tenant SA,5,mio@test.com,Mi calle 2
 """
         response = client.post(
             '/api/receptores/import',

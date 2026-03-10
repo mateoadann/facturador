@@ -99,7 +99,7 @@ def receptor(db, tenant):
         doc_tipo=80,
         doc_nro='30111111111',
         razon_social='Receptor SA',
-        condicion_iva='IVA Responsable Inscripto',
+        condicion_iva_id=1,  # IVA Responsable Inscripto
         activo=True
     )
     db.session.add(r)
