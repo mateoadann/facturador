@@ -274,21 +274,21 @@
 
       <article class="slide">
         <h2>Paso 2: Columnas obligatorias</h2>
-        <p>Si falta alguna de estas columnas, la importación falla. En esta guía, también consideramos obligatorias las columnas de ítems para poder generar correctamente el PDF.</p>
+        <p>Si falta alguna de estas columnas, la importación falla.</p>
         <div class="panel">
           <h3>Obligatorias de factura</h3>
           <div class="code">facturador_cuit, receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto</div>
         </div>
         <div class="panel">
           <h3>Obligatorias de ítems (para comprobante/PDF)</h3>
-          <div class="code">item_descripcion, item_cantidad, item_precio_unitario, item_alicuota_iva_id</div>
+          <div class="code">item_descripcion, item_cantidad, item_precio_unitario</div>
         </div>
-        <p class="err">Si el encabezado no tiene estas columnas, la carga no cumple el formato esperado para generar comprobantes completos.</p>
+        <p class="note">Si deseás que la factura tenga IVA discriminado, agregá la columna <strong>importe_iva</strong>. Si no la incluís, se marcará como "sin IVA".</p>
       </article>
 
       <article class="slide">
         <h2>Paso 3: Columnas opcionales</h2>
-        <p>Estas columnas no siempre son obligatorias, pero ayudan según el tipo de comprobante.</p>
+        <p>Estas columnas son opcionales pero útiles según el caso.</p>
         <div class="panel">
           <div class="code">importe_iva, moneda, cotizacion, fecha_desde, fecha_hasta, fecha_vto_pago, cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro</div>
         </div>
