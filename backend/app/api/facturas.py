@@ -426,7 +426,8 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
-        estado='pendiente'
+        estado='pendiente',
+        items_sin_iva=data.get('items_sin_iva', False)
     )
     db.session.add(factura)
     db.session.flush()
@@ -439,8 +440,10 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
                 descripcion=item_data['descripcion'],
                 cantidad=item_data['cantidad'],
                 precio_unitario=item_data['precio_unitario'],
-                alicuota_iva_id=item_data.get('alicuota_iva_id', 5),
-                subtotal=item_data['cantidad'] * item_data['precio_unitario'],
+                alicuota_iva_id=5,  # Valor por defecto, se recalcula en facturacion
+                importe_iva=item_data.get('importe_iva', 0),
+                importe_neto=item_data.get('importe_neto', item_data.get('subtotal', item_data['cantidad'] * item_data['precio_unitario'])),
+                subtotal=item_data.get('subtotal', item_data['cantidad'] * item_data['precio_unitario']),
                 orden=idx
             )
             db.session.add(item)

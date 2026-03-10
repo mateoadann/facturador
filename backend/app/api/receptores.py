@@ -92,7 +92,7 @@ def create_receptor():
         doc_nro=doc_nro,
         razon_social=data['razon_social'],
         direccion=data.get('direccion'),
-        condicion_iva=data.get('condicion_iva'),
+        condicion_iva_id=data.get('condicion_iva_id'),
         email=data.get('email')
     )
 
@@ -154,8 +154,8 @@ def update_receptor(receptor_id):
         receptor.razon_social = data['razon_social']
     if 'direccion' in data:
         receptor.direccion = data['direccion']
-    if 'condicion_iva' in data:
-        receptor.condicion_iva = data['condicion_iva']
+    if 'condicion_iva_id' in data:
+        receptor.condicion_iva_id = data['condicion_iva_id']
     if 'email' in data:
         receptor.email = data['email']
     if 'activo' in data:
@@ -222,9 +222,9 @@ def import_receptores():
         receptor = existing_by_doc.get(row['doc_nro'])
         if receptor:
             receptor.razon_social = row['razon_social']
-            receptor.condicion_iva = row['condicion_iva']
             receptor.email = row['email']
             receptor.direccion = row['direccion']
+            receptor.condicion_iva_id = row.get('condicion_iva_id')
             receptor.activo = True
             actualizados += 1
         else:
@@ -233,7 +233,7 @@ def import_receptores():
                 doc_tipo=row['doc_tipo'],
                 doc_nro=row['doc_nro'],
                 razon_social=row['razon_social'],
-                condicion_iva=row['condicion_iva'],
+                condicion_iva_id=row.get('condicion_iva_id'),
                 email=row['email'],
                 direccion=row['direccion'],
                 activo=True
