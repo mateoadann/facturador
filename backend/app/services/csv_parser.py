@@ -38,7 +38,6 @@ ITEM_COLUMNS = [
     'item_descripcion',
     'item_cantidad',
     'item_precio_unitario',
-    'item_alicuota_iva_id'
 ]
 
 
@@ -100,12 +99,17 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
             # Cuando hay items, recalcular importes desde los items
             factura = _recalculate_from_items(factura, grouped)
         else:
+            # Sin items - usar importes directo del CSV
             factura['importe_total'] = resolve_grouped_amount(grouped['importe_total_rows'])
             factura['importe_neto'] = resolve_grouped_amount(grouped['importe_neto_rows'])
 
             importe_iva = resolve_grouped_amount(grouped['importe_iva_rows'])
             if importe_iva is not None:
                 factura['importe_iva'] = importe_iva
+                factura['items_sin_iva'] = False
+            else:
+                factura['importe_iva'] = Decimal('0')
+                factura['items_sin_iva'] = True
 
         facturas.append(factura)
 
@@ -113,26 +117,40 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
 
 
 def _recalculate_from_items(factura: Dict[str, Any], grouped: Dict) -> Dict[str, Any]:
-    """Recalcula importes desde los items cuando hay múltiples filas agrupadas."""
-    from arca_integration.constants import ALICUOTAS_IVA
-
+    """Recalcula importes desde los items.
+    
+    Si viene importe_iva del CSV, se distribuye proporcionalmente por item.
+    Si NO viene importe_iva, marca items_sin_iva = true.
+    """
     items = factura['items']
-    importe_neto = sum(
-        (item['cantidad'] * item['precio_unitario']) for item in items
-    ).quantize(Decimal('0.01'))
-
-    # Calcular IVA desde los items
-    importe_iva = Decimal('0')
+    
+    # Calcular subtotal de cada item (precio * cantidad)
     for item in items:
-        subtotal = (item['cantidad'] * item['precio_unitario']).quantize(Decimal('0.01'))
-        alicuota_id = item.get('alicuota_iva_id', 5)
-        alicuota = ALICUOTAS_IVA.get(alicuota_id, {})
-        porcentaje = Decimal(str(alicuota.get('porcentaje', 21)))
-        importe_iva += (subtotal * porcentaje / Decimal('100')).quantize(Decimal('0.01'))
-
-    factura['importe_neto'] = importe_neto
-    factura['importe_iva'] = importe_iva.quantize(Decimal('0.01'))
-    factura['importe_total'] = (importe_neto + importe_iva).quantize(Decimal('0.01'))
+        item['subtotal'] = (item['cantidad'] * item['precio_unitario']).quantize(Decimal('0.01'))
+    
+    importe_neto_total = sum(item['subtotal'] for item in items).quantize(Decimal('0.01'))
+    
+    # Verificar si viene importe_iva del CSV
+    importe_iva_csv = resolve_grouped_amount(grouped.get('importe_iva_rows', []))
+    
+    if importe_iva_csv is not None and importe_iva_csv > 0:
+        for item in items:
+            proporcion = item['subtotal'] / importe_neto_total if importe_neto_total > 0 else Decimal('0')
+            item['importe_iva'] = (importe_iva_csv * proporcion).quantize(Decimal('0.02'))
+            item['importe_neto'] = item['subtotal']
+        
+        factura['importe_iva'] = importe_iva_csv.quantize(Decimal('0.01'))
+        factura['items_sin_iva'] = False
+    else:
+        # No viene IVA - marcar como sin IVA
+        for item in items:
+            item['importe_iva'] = Decimal('0')
+            item['importe_neto'] = item['subtotal']
+        factura['importe_iva'] = Decimal('0')
+        factura['items_sin_iva'] = True
+    
+    factura['importe_neto'] = importe_neto_total
+    factura['importe_total'] = (importe_neto_total + factura['importe_iva']).quantize(Decimal('0.01'))
 
     return factura
 
@@ -199,7 +217,6 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
             'descripcion': row.get('item_descripcion'),
             'cantidad': parse_decimal(row.get('item_cantidad', '1'), 'item_cantidad'),
             'precio_unitario': parse_decimal(row.get('item_precio_unitario', '0'), 'item_precio_unitario'),
-            'alicuota_iva_id': parse_int(row.get('item_alicuota_iva_id', '5'), 'item_alicuota_iva_id')
         }]
 
     fecha_emision = factura['fecha_emision']
