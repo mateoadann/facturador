@@ -12,7 +12,7 @@ class Receptor(db.Model):
     doc_nro = db.Column(db.String(13), nullable=False)
     razon_social = db.Column(db.String(255), nullable=False)
     direccion = db.Column(db.String(500))
-    condicion_iva = db.Column(db.String(100))
+    condicion_iva_id = db.Column(db.Integer, nullable=True)  # ID de condición IVA (RG 5616)
     email = db.Column(db.String(255))
     activo = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -33,7 +33,7 @@ class Receptor(db.Model):
             'doc_nro': self.doc_nro,
             'razon_social': self.razon_social,
             'direccion': self.direccion,
-            'condicion_iva': self.condicion_iva,
+            'condicion_iva_id': self.condicion_iva_id,
             'email': self.email,
             'activo': self.activo,
             'created_at': self.created_at.isoformat()
