@@ -6,7 +6,6 @@ from typing import List, Dict, Any, Tuple
 
 
 REQUIRED_COLUMNS = [
-    'facturador_cuit',
     'receptor_cuit',
     'tipo_comprobante',
     'concepto',
@@ -180,7 +179,6 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
     """Parsea una fila del CSV a un diccionario de factura."""
 
     factura = {
-        'facturador_cuit': clean_cuit(row.get('facturador_cuit', '')),
         'receptor_cuit': clean_cuit(row.get('receptor_cuit', '')),
         'tipo_comprobante': parse_int(row.get('tipo_comprobante'), 'tipo_comprobante'),
         'concepto': parse_int(row.get('concepto'), 'concepto'),
