@@ -1,4 +1,6 @@
 import io
+from datetime import date
+from decimal import Decimal
 from uuid import UUID
 from app.models import Factura, Facturador, Lote
 
@@ -173,6 +175,8 @@ class TestFacturarLote:
             cuit='20333444556',
             razon_social='Facturador Alternativo',
             punto_venta=9,
+            ingresos_brutos='902-111111-1',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
             cert_encrypted=b'cert',
@@ -296,6 +300,8 @@ class TestComprobantesZipLote:
             cuit='20333444557',
             razon_social='Facturador sin certificados',
             punto_venta=10,
+            ingresos_brutos='902-111111-2',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
         )
@@ -309,6 +315,56 @@ class TestComprobantesZipLote:
         )
         assert response.status_code == 400
         assert 'no tiene certificados' in response.get_json()['error'].lower()
+
+    def test_facturar_lote_rejects_facturador_without_fiscal_data(self, client, auth_headers, facturador, receptor, db):
+        lote = Lote(
+            tenant_id=facturador.tenant_id,
+            etiqueta='Lote sin datos fiscales',
+            tipo='factura',
+            estado='pendiente',
+            total_facturas=1,
+            facturador_id=facturador.id,
+        )
+        db.session.add(lote)
+        db.session.flush()
+
+        factura = Factura(
+            tenant_id=facturador.tenant_id,
+            lote_id=lote.id,
+            facturador_id=facturador.id,
+            receptor_id=receptor.id,
+            tipo_comprobante=1,
+            concepto=1,
+            punto_venta=facturador.punto_venta,
+            fecha_emision=date(2026, 1, 15),
+            importe_total=Decimal('1000.00'),
+            importe_neto=Decimal('826.45'),
+            importe_iva=Decimal('173.55'),
+            estado='pendiente',
+        )
+        db.session.add(factura)
+        db.session.commit()
+
+        alt_facturador = Facturador(
+            tenant_id=facturador.tenant_id,
+            cuit='20333444559',
+            razon_social='Facturador sin datos fiscales',
+            punto_venta=12,
+            ambiente='testing',
+            activo=True,
+            cert_encrypted=b'cert',
+            key_encrypted=b'key',
+        )
+        db.session.add(alt_facturador)
+        db.session.commit()
+
+        response = client.post(
+            f'/api/lotes/{lote.id}/facturar',
+            headers=auth_headers,
+            json={'facturador_id': str(alt_facturador.id)}
+        )
+        assert response.status_code == 400
+        assert 'datos fiscales' in response.get_json()['error'].lower()
 
     def test_facturar_lote_retries_error_facturas_by_resetting_to_pending(self, client, auth_headers, facturador, receptor, db, monkeypatch):
         csv_content = f"""facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
@@ -340,6 +396,8 @@ class TestComprobantesZipLote:
             cuit='20333444558',
             razon_social='Facturador Reintento',
             punto_venta=11,
+            ingresos_brutos='902-111111-3',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
             cert_encrypted=b'cert',

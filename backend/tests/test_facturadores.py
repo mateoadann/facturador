@@ -27,6 +27,8 @@ class TestCreateFacturador:
             'cuit': '20987654321',
             'razon_social': 'Nueva SA',
             'punto_venta': 2,
+            'ingresos_brutos': '902-777777-1',
+            'fecha_inicio_actividades': '2021-05-10',
             'condicion_iva': 'IVA Responsable Inscripto',
             'ambiente': 'testing'
         })
@@ -35,6 +37,8 @@ class TestCreateFacturador:
         assert data['cuit'] == '20987654321'
         assert data['razon_social'] == 'Nueva SA'
         assert data['punto_venta'] == 2
+        assert data['ingresos_brutos'] == '902-777777-1'
+        assert data['fecha_inicio_actividades'] == '2021-05-10'
 
     def test_create_missing_fields(self, client, auth_headers):
         response = client.post('/api/facturadores', headers=auth_headers, json={
@@ -46,7 +50,9 @@ class TestCreateFacturador:
         response = client.post('/api/facturadores', headers=auth_headers, json={
             'cuit': '20123456789',
             'razon_social': 'Duplicado SA',
-            'punto_venta': 1
+            'punto_venta': 1,
+            'ingresos_brutos': '902-777777-2',
+            'fecha_inicio_actividades': '2021-05-11',
         })
         assert response.status_code == 400
         assert 'Ya existe' in response.get_json()['error']
@@ -57,10 +63,17 @@ class TestUpdateFacturador:
         response = client.put(
             f'/api/facturadores/{facturador.id}',
             headers=auth_headers,
-            json={'razon_social': 'Updated SA'}
+            json={
+                'razon_social': 'Updated SA',
+                'ingresos_brutos': '901-000000-0',
+                'fecha_inicio_actividades': '2022-07-15',
+            }
         )
         assert response.status_code == 200
-        assert response.get_json()['razon_social'] == 'Updated SA'
+        payload = response.get_json()
+        assert payload['razon_social'] == 'Updated SA'
+        assert payload['ingresos_brutos'] == '901-000000-0'
+        assert payload['fecha_inicio_actividades'] == '2022-07-15'
 
     def test_update_not_found(self, client, auth_headers):
         import uuid
