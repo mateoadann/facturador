@@ -2,8 +2,11 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional, List
 from ..exceptions import ArcaValidationError
-
-TIPOS_COMPROBANTE_C = {11, 12, 13}
+from ..constants import (
+    TIPOS_COMPROBANTE_C,
+    TIPO_CBTE_CLASE,
+    CONDICIONES_IVA_POR_CLASE,
+)
 
 
 class FacturaBuilder:
@@ -241,7 +244,16 @@ class FacturaBuilder:
             }
 
         # RG 5616: condición frente al IVA del receptor
+        # Es obligatorio para todas las clases (A, B, C)
+        clase = TIPO_CBTE_CLASE.get(tipo_cbte)
         if self._condicion_iva_receptor_id is not None:
+            # Validar que la condición sea válida para la clase
+            condiciones_validas = CONDICIONES_IVA_POR_CLASE.get(clase, set())
+            if self._condicion_iva_receptor_id not in condiciones_validas:
+                raise ArcaValidationError(
+                    f"Condición IVA {self._condicion_iva_receptor_id} no válida para "
+                    f"comprobante clase {clase}. Valores permitidos: {condiciones_validas}"
+                )
             det_request['CondicionIVAReceptorId'] = self._condicion_iva_receptor_id
 
         return {

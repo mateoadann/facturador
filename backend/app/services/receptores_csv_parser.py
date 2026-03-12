@@ -17,11 +17,51 @@ HEADER_ALIASES = {
     'condicion_iva': 'condicion_iva',
     'condicion iva': 'condicion_iva',
     'condición iva': 'condicion_iva',
+    'condicion_iva_id': 'condicion_iva_id',
+    'condicion iva id': 'condicion_iva_id',
+    'condición iva id': 'condicion_iva_id',
+    'id condicion iva': 'condicion_iva_id',
     'email': 'email',
     'correo': 'email',
     'direccion': 'direccion',
     'dirección': 'direccion',
     'domicilio': 'direccion',
+}
+
+# Mapping de nombres a IDs para compatibilidad con CSV
+NOMBRE_A_ID = {
+    'iva responsable inscripto': 1,
+    'responsable inscripto': 1,
+    'ri': 1,
+    '1': 1,
+    'iva sujeto exento': 4,
+    'iva exento': 4,
+    'exento': 4,
+    '4': 4,
+    'consumidor final': 5,
+    'consumidor': 5,
+    'cf': 5,
+    '5': 5,
+    'responsable monotributo': 6,
+    'monotributista': 6,
+    'monotributo': 6,
+    '6': 6,
+    'sujeto no categorizado': 7,
+    'no categorizado': 7,
+    '7': 7,
+    'proveedor del exterior': 8,
+    '8': 8,
+    'cliente del exterior': 9,
+    '9': 9,
+    'iva liberado': 10,
+    'iva liberado ley 19.640': 10,
+    '10': 10,
+    'monotributista social': 13,
+    '13': 13,
+    'iva no alcanzado': 15,
+    '15': 15,
+    'monotributo trabajador independiente promovido': 16,
+    '16': 16,
 }
 
 REQUIRED_CANONICAL_HEADERS = ['doc_nro', 'razon_social']
@@ -100,14 +140,28 @@ def _parse_row(raw_row: dict[str, str], header_map: dict[str, str]) -> dict[str,
     if email and not _is_valid_email(email):
         raise ValueError("Campo 'email' inválido")
 
-    condicion_iva = canonical_row.get('condicion_iva', '').strip() or None
+    # Resolver condicion_iva_id desde nombre o ID directo
+    condicion_iva_id = None
+    raw_condicion_iva = canonical_row.get('condicion_iva', '').strip()
+    raw_condicion_iva_id = canonical_row.get('condicion_iva_id', '').strip()
+    
+    if raw_condicion_iva_id:
+        # ID directo en CSV
+        try:
+            condicion_iva_id = int(raw_condicion_iva_id)
+        except ValueError:
+            pass
+    elif raw_condicion_iva:
+        # Nombre en CSV, convertir a ID
+        condicion_iva_id = NOMBRE_A_ID.get(raw_condicion_iva.lower())
+    
     direccion = canonical_row.get('direccion', '').strip() or None
 
     return {
         'doc_tipo': 80,
         'doc_nro': doc_nro,
         'razon_social': razon_social,
-        'condicion_iva': condicion_iva,
+        'condicion_iva_id': condicion_iva_id,
         'email': email,
         'direccion': direccion,
     }

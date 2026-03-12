@@ -18,6 +18,7 @@ import {
 import { formatCUIT } from '@/lib/utils'
 import { toast } from '@/stores/toastStore'
 import ImportModal from './ImportModal'
+import { CONDICIONES_IVA, getCondicionIvaLabel } from '@/constants/condicionesIva'
 
 function Receptores() {
   const queryClient = useQueryClient()
@@ -31,7 +32,7 @@ function Receptores() {
     doc_nro: '',
     razon_social: '',
     direccion: '',
-    condicion_iva: '',
+    condicion_iva_id: null,
     email: '',
   })
 
@@ -92,7 +93,7 @@ function Receptores() {
         doc_nro: receptor.doc_nro,
         razon_social: receptor.razon_social,
         direccion: receptor.direccion || '',
-        condicion_iva: receptor.condicion_iva || '',
+        condicion_iva_id: receptor.condicion_iva_id || null,
         email: receptor.email || '',
       })
     } else {
@@ -102,7 +103,7 @@ function Receptores() {
         doc_nro: '',
         razon_social: '',
         direccion: '',
-        condicion_iva: '',
+        condicion_iva_id: null,
         email: '',
       })
     }
@@ -136,11 +137,16 @@ function Receptores() {
       const response = await api.receptores.consultarCuit(formData.doc_nro)
       if (response.data.success && response.data.data) {
         const padronData = response.data.data
+        // Convertir nombre de condición IVA a ID
+        const condicionIvaFromName = (nombre) => {
+          const found = CONDICIONES_IVA.find(c => c.label.toLowerCase() === nombre?.toLowerCase())
+          return found ? found.id : null
+        }
         setFormData((prev) => ({
           ...prev,
           razon_social: padronData.razon_social || prev.razon_social,
           direccion: padronData.direccion || prev.direccion,
-          condicion_iva: padronData.condicion_iva || prev.condicion_iva,
+          condicion_iva_id: condicionIvaFromName(padronData.condicion_iva) || prev.condicion_iva_id,
         }))
         toast.success('Datos encontrados', 'Se completaron los datos del receptor desde ARCA')
       } else {
@@ -243,7 +249,7 @@ function Receptores() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{receptor.condicion_iva || '-'}</TableCell>
+                  <TableCell>{getCondicionIvaLabel(receptor.condicion_iva_id)}</TableCell>
                   <TableCell>{receptor.email || '-'}</TableCell>
                   <TableCell>
                     <Badge variant={receptor.activo ? 'success' : 'default'}>
@@ -359,14 +365,13 @@ function Receptores() {
 
           <Select
             label="Condición IVA"
-            value={formData.condicion_iva}
-            onChange={(e) => setFormData({ ...formData, condicion_iva: e.target.value })}
+            value={formData.condicion_iva_id || ''}
+            onChange={(e) => setFormData({ ...formData, condicion_iva_id: e.target.value ? parseInt(e.target.value) : null })}
           >
             <option value="">Seleccionar...</option>
-            <option value="IVA Responsable Inscripto">IVA Responsable Inscripto</option>
-            <option value="Responsable Monotributo">Responsable Monotributo</option>
-            <option value="Consumidor Final">Consumidor Final</option>
-            <option value="IVA Sujeto Exento">IVA Sujeto Exento</option>
+            {CONDICIONES_IVA.map(c => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
           </Select>
 
           <Input

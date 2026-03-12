@@ -156,7 +156,7 @@ function Facturar() {
         const result = jobStatus.result
         toast.success(
           'Lote procesado',
-          result ? `${result.ok} autorizadas, ${result.errores} con error` : 'Facturación completada'
+          result ? `${result.ok} autorizadas, ${result.errors} con error` : 'Facturación completada'
         )
       } else {
         toast.error('Error al facturar', jobStatus.error || 'Ocurrió un error al procesar el lote')

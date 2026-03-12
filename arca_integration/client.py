@@ -3,8 +3,15 @@ import os
 import time
 import pickle
 import fcntl
+import json
+import ast
+import re
+import logging
+import importlib
 from contextlib import contextmanager
 from typing import Optional
+from datetime import date, datetime
+from decimal import Decimal
 
 import arca_arg.settings as arca_settings
 import arca_arg.auth as arca_auth
@@ -13,6 +20,9 @@ from arca_arg.webservice import ArcaWebService
 from arca_arg.settings import WSDL_FEV1_HOM, WSDL_FEV1_PROD, WSDL_CONSTANCIA_HOM, WSDL_CONSTANCIA_PROD
 
 from .exceptions import ArcaError, ArcaAuthError
+
+
+logger = logging.getLogger(__name__)
 
 
 class ArcaClient:
@@ -35,6 +45,11 @@ class ArcaClient:
         self.cuit = cuit.replace('-', '')
         self.ambiente = ambiente
         self.is_production = ambiente == 'production'
+        self.verbose_logs = os.getenv('ARCA_VERBOSE_LOGS', 'false').strip().lower() == 'true'
+        self.verbose_format = (os.getenv('ARCA_VERBOSE_FORMAT', 'compact') or 'compact').strip().lower()
+        self.verbose_include_raw = os.getenv('ARCA_VERBOSE_INCLUDE_RAW', 'false').strip().lower() == 'true'
+        flask_env = (os.getenv('FLASK_ENV', 'development') or 'development').strip().lower()
+        self.environment = 'dev' if flask_env.startswith('dev') else ('prod' if flask_env.startswith('prod') else flask_env)
 
         self._temp_dir = tempfile.mkdtemp()
         self._cert_path = os.path.join(self._temp_dir, 'cert.pem')
@@ -221,7 +236,16 @@ class ArcaClient:
                 'CbteTipo': tipo_cbte,
             }
 
+            request_started = time.perf_counter()
+            self._log_ws_request('FECompUltimoAutorizado', 'wsfe', data)
             result = ws.send_request('FECompUltimoAutorizado', data)
+            self._log_ws_response(
+                'FECompUltimoAutorizado',
+                'wsfe',
+                result,
+                'raw',
+                duration_ms=(time.perf_counter() - request_started) * 1000,
+            )
             return result.CbteNro
         except ArcaError:
             raise
@@ -271,8 +295,21 @@ class ArcaClient:
                 }
             }
 
+            request_started = time.perf_counter()
+            self._log_ws_request('FECAESolicitar', 'wsfe', data)
+
             result = ws.send_request('FECAESolicitar', data)
-            return self._parse_cae_response(result)
+            self._log_ws_response(
+                'FECAESolicitar',
+                'wsfe',
+                result,
+                'raw',
+                duration_ms=(time.perf_counter() - request_started) * 1000,
+            )
+
+            parsed_response = self._parse_cae_response(result)
+            self._log_ws_response('FECAESolicitar', 'wsfe', parsed_response, 'parsed')
+            return parsed_response
         except ArcaError:
             raise
         except Exception as e:
@@ -308,7 +345,16 @@ class ArcaClient:
                 }
             }
 
+            request_started = time.perf_counter()
+            self._log_ws_request('FECompConsultar', 'wsfe', data)
             result = ws.send_request('FECompConsultar', data)
+            self._log_ws_response(
+                'FECompConsultar',
+                'wsfe',
+                result,
+                'raw',
+                duration_ms=(time.perf_counter() - request_started) * 1000,
+            )
 
             if hasattr(result, 'ResultGet') and result.ResultGet:
                 cbte = result.ResultGet
@@ -459,6 +505,135 @@ class ArcaClient:
                 ]
 
         return response
+
+    def _log_ws_request(self, method_name: str, wsid: str, params: dict):
+        if not self.verbose_logs:
+            return
+
+        self._emit_verbose_log({
+            'event': 'arca.ws.request',
+            'environment': self.environment,
+            'arca_ambiente': self.ambiente,
+            'method': method_name,
+            'wsid': wsid,
+            'params': self._sanitize_payload(params),
+        })
+
+    def _log_ws_response(self, method_name: str, wsid: str, response, stage: str, duration_ms: float | None = None):
+        if not self.verbose_logs:
+            return
+
+        if stage == 'raw' and not self.verbose_include_raw:
+            return
+
+        payload = {
+            'event': 'arca.ws.response',
+            'environment': self.environment,
+            'arca_ambiente': self.ambiente,
+            'method': method_name,
+            'wsid': wsid,
+            'stage': stage,
+            'response': self._to_json_safe(response),
+        }
+
+        if duration_ms is not None:
+            payload['duration_ms'] = round(float(duration_ms), 2)
+
+        self._emit_verbose_log(payload)
+
+    def _emit_verbose_log(self, payload: dict):
+        try:
+            json_payload = self._format_json(payload)
+            logger.info('ARCA_VERBOSE %s', json_payload)
+        except Exception:
+            logger.info('ARCA_VERBOSE %s', str(payload))
+
+    def _format_json(self, payload: dict) -> str:
+        safe_payload = self._to_json_safe(payload)
+        if self.verbose_format == 'pretty':
+            return json.dumps(safe_payload, ensure_ascii=False, indent=2)
+        return json.dumps(safe_payload, ensure_ascii=False, separators=(',', ':'))
+
+    def _sanitize_payload(self, value):
+        secret_keys = {'token', 'sign'}
+
+        if isinstance(value, dict):
+            sanitized = {}
+            for key, item in value.items():
+                key_str = str(key)
+                if key_str.lower() in secret_keys:
+                    continue
+                sanitized[key_str] = self._sanitize_payload(item)
+            return sanitized
+
+        if isinstance(value, list):
+            return [self._sanitize_payload(item) for item in value]
+
+        if isinstance(value, tuple):
+            return [self._sanitize_payload(item) for item in value]
+
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith('{') and stripped.endswith('}'):
+                try:
+                    parsed = ast.literal_eval(stripped)
+                    return self._sanitize_payload(parsed)
+                except Exception:
+                    pass
+            return self._redact_secret_fragments(value)
+
+        converted = self._to_json_safe(value)
+        if isinstance(converted, dict):
+            return self._sanitize_payload(converted)
+        if isinstance(converted, list):
+            return [self._sanitize_payload(item) for item in converted]
+        if isinstance(converted, str):
+            return self._redact_secret_fragments(converted)
+        return converted
+
+    def _to_json_safe(self, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+
+        if isinstance(value, Decimal):
+            return float(value)
+
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+
+        if isinstance(value, dict):
+            return {str(k): self._to_json_safe(v) for k, v in value.items()}
+
+        if isinstance(value, (list, tuple, set)):
+            return [self._to_json_safe(v) for v in value]
+
+        try:
+            zeep_helpers = importlib.import_module('zeep.helpers')
+            serialize_object = getattr(zeep_helpers, 'serialize_object', None)
+            if serialize_object is None:
+                raise AttributeError('serialize_object no disponible')
+
+            serialized = serialize_object(value)
+            if serialized is not value:
+                return self._to_json_safe(serialized)
+        except Exception:
+            pass
+
+        if hasattr(value, '__dict__'):
+            serialized = {}
+            for key, attr in vars(value).items():
+                if str(key).startswith('_'):
+                    continue
+                serialized[str(key)] = self._to_json_safe(attr)
+            if serialized:
+                return serialized
+
+        return str(value)
+
+    def _redact_secret_fragments(self, value: str) -> str:
+        redacted = re.sub(r"(['\"]?Token['\"]?\s*:\s*['\"])([^'\"]*)(['\"])", r"\1***\3", value)
+        redacted = re.sub(r"(['\"]?Sign['\"]?\s*:\s*['\"])([^'\"]*)(['\"])", r"\1***\3", redacted)
+        return redacted
 
     def _format_domicilio(self, domicilio) -> Optional[str]:
         """Formatea el domicilio de ARCA."""

@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 
 from flask import render_template_string
 
-from arca_integration.constants import ALICUOTAS_IVA
+from arca_integration.constants import ALICUOTAS_IVA, CONDICIONES_IVA
 
 
 COMPROBANTE_TEMPLATE = """
@@ -707,7 +707,16 @@ def render_comprobante_html(factura):
 def _build_context(factura):
     tipo = int(factura.tipo_comprobante)
     letra = LETTER_BY_TIPO.get(tipo, '')
+    # Factura A y M siempre discriminan IVA
+    # Factura B solo discrimina si tiene importe_iva > 0 y NO es items_sin_iva
     discrimina_iva = tipo in {1, 2, 3, 51, 52, 53}
+    
+    # Detectar si es Factura B sin IVA discriminado
+    es_tipo_b = tipo in {6, 7, 8}
+    es_factura_b_sin_iva = es_tipo_b and getattr(factura, 'items_sin_iva', False)
+    
+    # Factura B con IVA discriminado también muestra transparencia fiscal
+    tiene_iva_discriminado = discrimina_iva or (es_tipo_b and Decimal(str(factura.importe_iva or 0)) > 0 and not es_factura_b_sin_iva)
     is_nota_credito = tipo in {3, 8, 13, 53}
 
     numero = int(factura.numero_comprobante or 0)
@@ -719,7 +728,7 @@ def _build_context(factura):
     elif tipo in {2, 7, 12, 52}:
         title_base = 'NOTA DE DEBITO'
 
-    items = _build_items_rows(factura)
+    items = _build_items_rows(factura, es_factura_b_sin_iva)
     iva_totals = _build_iva_totals(factura)
     totales_a = [
         {'label': 'Importe Neto Gravado', 'value': _money(factura.importe_neto)},
@@ -775,14 +784,16 @@ def _build_context(factura):
         'emisor_inicio_actividades': '-',
         'receptor_doc_nro': (factura.receptor.doc_nro if factura.receptor else ''),
         'receptor_razon_social': (factura.receptor.razon_social if factura.receptor else ''),
-        'receptor_condicion_iva': (factura.receptor.condicion_iva if factura.receptor and factura.receptor.condicion_iva else '-'),
+        'receptor_condicion_iva': (CONDICIONES_IVA.get(factura.receptor.condicion_iva_id, '-') if factura.receptor and factura.receptor.condicion_iva_id else '-'),
         'receptor_direccion': (factura.receptor.direccion if factura.receptor and factura.receptor.direccion else '-'),
         'condicion_venta': condicion_venta,
         'comprobante_asociado': comprobante_asociado,
         'items': items,
         'totales_a': totales_a,
-        'mostrar_transparencia_fiscal': (not discrimina_iva) and iva_contenido > 0,
-        'subtotal': _money(factura.importe_neto),
+        # Mostrar transparencia fiscal solo si tiene IVA discriminado Y NO es Factura B sin IVA
+        'mostrar_transparencia_fiscal': tiene_iva_discriminado and iva_contenido > 0 and not es_factura_b_sin_iva,
+        # Factura B sin IVA: mostrar precio final como subtotal
+        'subtotal': _money(factura.importe_total) if es_factura_b_sin_iva else _money(factura.importe_neto),
         'importe_otros_tributos': _money(Decimal('0')),
         'importe_total': _money(factura.importe_total),
         'iva_contenido': _money(iva_contenido),
@@ -792,7 +803,7 @@ def _build_context(factura):
     }
 
 
-def _build_items_rows(factura):
+def _build_items_rows(factura, es_factura_b_sin_iva=False):
     rows = []
     if factura.items:
         for item in factura.items:
@@ -802,6 +813,12 @@ def _build_items_rows(factura):
             if iva_item == 0 and alicuota > 0:
                 iva_item = (subtotal * Decimal(str(alicuota)) / Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
+            # Factura B sin IVA: mostrar precio con IVA en la columna subtotal
+            if es_factura_b_sin_iva:
+                subtotal_mostrar = subtotal + iva_item
+            else:
+                subtotal_mostrar = subtotal
+
             row = {
                 'descripcion': item.descripcion or '',
                 'cantidad': _qty(item.cantidad),
@@ -809,7 +826,7 @@ def _build_items_rows(factura):
                 'precio_unitario': _money(item.precio_unitario),
                 'bonif_pct': _qty(Decimal('0')),
                 'imp_bonif': _money(Decimal('0')),
-                'subtotal': _money(subtotal),
+                'subtotal': _money(subtotal_mostrar),
                 'alicuota': _percent(alicuota),
                 'subtotal_con_iva': _money(subtotal + iva_item),
             }
@@ -819,14 +836,21 @@ def _build_items_rows(factura):
         subtotal = Decimal(str(factura.importe_neto or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         iva_total = Decimal(str(factura.importe_iva or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         alicuota = Decimal('21') if iva_total > 0 else Decimal('0')
+        
+        # Factura B sin IVA: mostrar precio con IVA
+        if es_factura_b_sin_iva:
+            subtotal_mostrar = subtotal + iva_total
+        else:
+            subtotal_mostrar = subtotal
+            
         rows.append({
             'descripcion': 'Concepto',
             'cantidad': _qty(Decimal('1')),
             'unidad': 'Unidad',
-            'precio_unitario': _money(subtotal),
+            'precio_unitario': _money(subtotal_mostrar),
             'bonif_pct': _qty(Decimal('0')),
             'imp_bonif': _money(Decimal('0')),
-            'subtotal': _money(subtotal),
+            'subtotal': _money(subtotal_mostrar),
             'alicuota': _percent(alicuota),
             'subtotal_con_iva': _money(subtotal + iva_total),
         })

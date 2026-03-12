@@ -26,6 +26,9 @@ class Config:
 
     # ARCA
     ARCA_AMBIENTE = os.environ.get('ARCA_AMBIENTE', 'testing')
+    ARCA_VERBOSE_LOGS = os.environ.get('ARCA_VERBOSE_LOGS', 'false').strip().lower() == 'true'
+    ARCA_VERBOSE_FORMAT = os.environ.get('ARCA_VERBOSE_FORMAT', 'compact').strip().lower()
+    ARCA_VERBOSE_INCLUDE_RAW = os.environ.get('ARCA_VERBOSE_INCLUDE_RAW', 'false').strip().lower() == 'true'
 
 
 class DevelopmentConfig(Config):
