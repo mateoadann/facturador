@@ -16,10 +16,13 @@ import {
   KeyRound,
   Mail,
   LifeBuoy,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/sidebarStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { useLogout } from '@/hooks/useAuth'
 import ChangePasswordModal from '@/components/auth/ChangePasswordModal'
 
@@ -74,6 +77,8 @@ function NavItem({ icon: Icon, label, href, isCollapsed }) {
 function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore()
   const { user, tenant } = useAuthStore()
+  const darkMode = useThemeStore((s) => s.darkMode)
+  const toggleDarkMode = useThemeStore((s) => s.toggleDarkMode)
   const { mutate: logout } = useLogout()
   const permisos = user?.permisos || []
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
@@ -153,6 +158,37 @@ function Sidebar() {
                         isCollapsed={isCollapsed}
                       />
                     ))}
+                    {item.group === 'CONFIGURACIÓN' && (
+                      <button
+                        onClick={toggleDarkMode}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-secondary',
+                          isCollapsed && 'justify-center px-0'
+                        )}
+                        title={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+                      >
+                        {darkMode ? (
+                          <Moon className="h-5 w-5 flex-shrink-0" />
+                        ) : (
+                          <Sun className="h-5 w-5 flex-shrink-0" />
+                        )}
+                        {!isCollapsed && (
+                          <>
+                            <span className="flex-1 text-left">Modo oscuro</span>
+                            <span className="relative h-6 w-11 rounded-full bg-secondary">
+                              <span
+                                className={cn(
+                                  'absolute top-0.5 h-5 w-5 rounded-full transition-transform',
+                                  darkMode
+                                    ? 'translate-x-[22px] bg-primary'
+                                    : 'translate-x-0.5 bg-text-muted'
+                                )}
+                              />
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               )
