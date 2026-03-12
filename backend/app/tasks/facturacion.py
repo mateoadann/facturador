@@ -135,6 +135,26 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                     })
                 continue
 
+            if facturador and (not facturador.ingresos_brutos or not facturador.fecha_inicio_actividades):
+                for factura in facturas_grupo:
+                    factura.estado = 'error'
+                    factura.error_mensaje = 'Facturador sin datos de Ingresos Brutos o Fecha de Inicio de Actividades'
+                    errors += 1
+                    processed += 1
+                    _log_facturacion_trace(
+                        'factura.skip.sin_datos_iibb',
+                        task_id=str(getattr(self.request, 'id', '')),
+                        lote_id=str(lote_id),
+                        factura_id=str(factura.id),
+                        facturador_id=str(facturador_id),
+                    )
+                    self.update_state(state='PROGRESS', meta={
+                        'current': processed,
+                        'total': total,
+                        'percent': int((processed / total) * 100)
+                    })
+                continue
+
             try:
                 # Desencriptar certificados
                 cert = decrypt_certificate(facturador.cert_encrypted)

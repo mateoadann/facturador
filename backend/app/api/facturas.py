@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from arca_integration.constants import ALICUOTAS_IVA
-from flask import Blueprint, request, jsonify, g, make_response
+from flask import Blueprint, request, jsonify, g, current_app, make_response
 
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
@@ -268,27 +268,9 @@ def import_csv():
     file = request.files['file']
     etiqueta = (request.form.get('etiqueta', '') or '').strip()
     tipo = request.form.get('tipo', 'factura')
-    facturador_id_raw = request.form.get('facturador_id')
 
     if not etiqueta:
         return jsonify({'error': 'La etiqueta del lote es requerida'}), 400
-
-    if not facturador_id_raw:
-        return jsonify({'error': 'El facturador es requerido'}), 400
-
-    try:
-        facturador_id_val = UUID(str(facturador_id_raw))
-    except (TypeError, ValueError):
-        return jsonify({'error': 'facturador_id inválido'}), 400
-
-    facturador = Facturador.query.filter_by(
-        id=facturador_id_val,
-        tenant_id=g.tenant_id,
-        activo=True
-    ).first()
-
-    if not facturador:
-        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 404
 
     existing_lote = Lote.query.filter(
         Lote.tenant_id == g.tenant_id,
@@ -325,44 +307,72 @@ def import_csv():
         etiqueta=etiqueta,
         tipo=tipo,
         estado='pendiente',
-        total_facturas=len(facturas_data),
-        facturador_id=facturador.id
+        total_facturas=len(facturas_data)
     )
     db.session.add(lote)
     db.session.flush()
 
+    # Obtener facturador desde form data
+    facturador_id_str = request.form.get('facturador_id')
+    if not facturador_id_str:
+        return jsonify({'error': 'facturador_id es requerido'}), 400
+
+    try:
+        facturador_id = UUID(facturador_id_str)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'facturador_id inválido'}), 400
+
+    facturador = Facturador.query.filter_by(
+        id=facturador_id,
+        tenant_id=g.tenant_id,
+        activo=True
+    ).first()
+    if not facturador:
+        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 400
+
     # Procesar cada factura
     facturas_creadas = []
     errores_creacion = []
+    warnings = []
 
     for idx, factura_data in enumerate(facturas_data):
         try:
-            factura = create_factura_from_data(
-                factura_data, lote.id, g.tenant_id,
-                facturador_id=facturador.id,
-                punto_venta=facturador.punto_venta
-            )
+            factura = create_factura_from_data(factura_data, lote.id, g.tenant_id, facturador)
             facturas_creadas.append(factura)
+            if factura.estado == 'error' and factura.error_mensaje:
+                warnings.append(f"Fila {idx + 1}: {factura.error_mensaje}")
         except ValueError as e:
             errores_creacion.append(f"Fila {idx + 2}: {str(e)}")
 
+    if facturas_creadas:
+        lote.facturador_id = facturas_creadas[0].facturador_id
+
     lote.total_facturas = len(facturas_creadas)
+    facturas_con_error = sum(1 for f in facturas_creadas if f.estado == 'error')
+    lote.facturas_error = facturas_con_error
 
     log_action('lote:importar', recurso='lote', recurso_id=lote.id,
-               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas)})
+               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas),
+                        'con_errores_validacion': facturas_con_error})
     db.session.commit()
 
     return jsonify({
         'lote': lote.to_dict(),
         'facturas_importadas': len(facturas_creadas),
         'errores_parseo': parse_errors,
-        'errores_creacion': errores_creacion
+        'errores_creacion': errores_creacion,
+        'warnings': warnings
     }), 201
 
 
-def create_factura_from_data(data: dict, lote_id: str, tenant_id: str,
-                             facturador_id: str, punto_venta: int) -> Factura:
-    """Crear una factura a partir de datos parseados del CSV."""
+def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturador: 'Facturador') -> Factura:
+    """Crear una factura a partir de datos parseados del CSV.
+
+    El facturador se recibe directamente (seleccionado via facturador_id en form data).
+    """
+
+    if not facturador:
+        raise ValueError("Facturador no proporcionado")
 
     # Buscar o crear receptor
     receptor = Receptor.query.filter_by(
@@ -392,11 +402,11 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str,
     factura = Factura(
         tenant_id=tenant_id,
         lote_id=lote_id,
-        facturador_id=facturador_id,
+        facturador_id=facturador.id,
         receptor_id=receptor.id,
         tipo_comprobante=data['tipo_comprobante'],
         concepto=data['concepto'],
-        punto_venta=punto_venta,
+        punto_venta=facturador.punto_venta,
         fecha_emision=data['fecha_emision'],
         fecha_desde=data.get('fecha_desde'),
         fecha_hasta=data.get('fecha_hasta'),
@@ -404,8 +414,8 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str,
         importe_total=importe_total,
         importe_neto=importe_neto,
         importe_iva=importe_iva,
-        moneda=data.get('moneda', 'PES'),
-        cotizacion=data.get('cotizacion', 1),
+        moneda='PES',
+        cotizacion=Decimal('1'),
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
@@ -414,6 +424,12 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str,
     )
     db.session.add(factura)
     db.session.flush()
+
+    # Marcar con error de validación si el parser lo detectó
+    validation_error = data.get('_validation_error')
+    if validation_error:
+        factura.estado = 'error'
+        factura.error_mensaje = validation_error
 
     # Crear items si existen
     if data.get('items'):

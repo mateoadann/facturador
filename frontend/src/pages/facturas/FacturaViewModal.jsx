@@ -128,15 +128,7 @@ function FacturaViewModal({ isOpen, onClose, facturaId }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-text-muted">Moneda</p>
-              <p className="mt-1 font-medium text-text-primary">{factura.moneda || '-'}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-xs uppercase text-text-muted">Cotizacion</p>
-              <p className="mt-1 font-medium text-text-primary">{factura.cotizacion ?? '-'}</p>
-            </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="rounded-md border border-border p-3">
               <p className="text-xs uppercase text-text-muted">Fecha vto pago</p>
               <p className="mt-1 font-medium text-text-primary">{formatDate(factura.fecha_vto_pago) || '-'}</p>
