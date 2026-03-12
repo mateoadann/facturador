@@ -754,6 +754,16 @@ def _build_context(factura):
 
     emisor_razon_social = (factura.facturador.razon_social if factura.facturador else '')
     emisor_razon_social_upper = emisor_razon_social.upper() if emisor_razon_social else ''
+    emisor_ingresos_brutos = (
+        factura.facturador.ingresos_brutos
+        if factura.facturador and factura.facturador.ingresos_brutos
+        else '-'
+    )
+    emisor_inicio_actividades = (
+        _date(factura.facturador.fecha_inicio_actividades)
+        if factura.facturador and factura.facturador.fecha_inicio_actividades
+        else '-'
+    )
 
     condicion_venta = 'Cuenta Corriente'
     if tipo in {6, 8, 11, 12, 13}:
@@ -780,8 +790,8 @@ def _build_context(factura):
         'emisor_direccion': (factura.facturador.direccion if factura.facturador and factura.facturador.direccion else '-'),
         'emisor_condicion_iva': (factura.facturador.condicion_iva if factura.facturador and factura.facturador.condicion_iva else '-'),
         'emisor_cuit': (factura.facturador.cuit if factura.facturador else ''),
-        'emisor_ingresos_brutos': (factura.facturador.ingresos_brutos or '-') if factura.facturador else '-',
-        'emisor_inicio_actividades': factura.facturador.fecha_inicio_actividades.strftime('%d/%m/%Y') if factura.facturador and factura.facturador.fecha_inicio_actividades else '-',
+        'emisor_ingresos_brutos': emisor_ingresos_brutos,
+        'emisor_inicio_actividades': emisor_inicio_actividades,
         'receptor_doc_nro': (factura.receptor.doc_nro if factura.receptor else ''),
         'receptor_razon_social': (factura.receptor.razon_social if factura.receptor else ''),
         'receptor_condicion_iva': (CONDICIONES_IVA.get(factura.receptor.condicion_iva_id, '-') if factura.receptor and factura.receptor.condicion_iva_id else '-'),

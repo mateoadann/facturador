@@ -1,5 +1,6 @@
 import io
 from datetime import date
+from decimal import Decimal
 from uuid import UUID
 from app.models import Factura, Facturador, Lote
 
@@ -11,14 +12,14 @@ class TestListLotes:
         assert response.get_json()['items'] == []
 
     def test_list_after_import(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
             'etiqueta': 'Lote Test',
             'tipo': 'factura',
-            'facturador_id': str(facturador.id),
+            'facturador_id': str(facturador.id)
         }
         client.post(
             '/api/facturas/import',
@@ -35,8 +36,8 @@ class TestListLotes:
         assert items[0]['total_facturas'] == 1
 
     def test_list_lotes_para_facturar_includes_completed_with_error(self, client, auth_headers, facturador, receptor, db):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -66,8 +67,8 @@ class TestListLotes:
         assert str(lote_id) in ids
 
     def test_list_lotes_para_facturar_excludes_completed_without_retryables(self, client, auth_headers, facturador, receptor, db):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -97,15 +98,15 @@ class TestListLotes:
 
 class TestGetLote:
     def test_get_with_stats(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45
-{receptor.doc_nro},1,1,2026-01-16,2000.00,1652.89,347.11,Servicio,1,1652.89"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45
+{receptor.doc_nro},1,1,2026-01-16,2000.00,1652.89"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
             'etiqueta': 'Lote stats',
             'tipo': 'factura',
-            'facturador_id': str(facturador.id),
+            'facturador_id': str(facturador.id)
         }
         import_response = client.post(
             '/api/facturas/import',
@@ -131,14 +132,14 @@ class TestGetLote:
 
 class TestDeleteLote:
     def test_delete_lote_without_autorizadas(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
             'etiqueta': 'Lote delete',
             'tipo': 'factura',
-            'facturador_id': str(facturador.id),
+            'facturador_id': str(facturador.id)
         }
         import_response = client.post(
             '/api/facturas/import',
@@ -158,8 +159,8 @@ class TestDeleteLote:
 
 class TestFacturarLote:
     def test_facturar_lote_allows_switching_facturador(self, client, auth_headers, facturador, receptor, db, monkeypatch):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -180,10 +181,10 @@ class TestFacturarLote:
             cuit='20333444556',
             razon_social='Facturador Alternativo',
             punto_venta=9,
+            ingresos_brutos='902-111111-1',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
-            ingresos_brutos='20-33344455-6',
-            fecha_inicio_actividades=date(2020, 1, 1),
             cert_encrypted=b'cert',
             key_encrypted=b'key',
         )
@@ -214,8 +215,8 @@ class TestFacturarLote:
 
 class TestComprobantesZipLote:
     def _create_lote_con_factura_autorizada(self, client, auth_headers, facturador, receptor, db):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},6,1,2026-01-15,1210.00,1000.00,210.00,Servicio,1,1000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},6,1,2026-01-15,1210.00,1000.00"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -264,8 +265,8 @@ class TestComprobantesZipLote:
         assert payload['autorizados'] == 1
 
     def test_generar_comprobantes_zip_rechaza_sin_autorizadas(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -286,8 +287,8 @@ class TestComprobantesZipLote:
         assert 'autorizados' in response.get_json()['error'].lower()
 
     def test_facturar_lote_rejects_facturador_without_certificates(self, client, auth_headers, facturador, receptor, db):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -308,10 +309,10 @@ class TestComprobantesZipLote:
             cuit='20333444557',
             razon_social='Facturador sin certificados',
             punto_venta=10,
+            ingresos_brutos='902-111111-2',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
-            ingresos_brutos='20-33344455-7',
-            fecha_inicio_actividades=date(2020, 1, 1),
         )
         db.session.add(alt_facturador)
         db.session.commit()
@@ -324,9 +325,59 @@ class TestComprobantesZipLote:
         assert response.status_code == 400
         assert 'no tiene certificados' in response.get_json()['error'].lower()
 
+    def test_facturar_lote_rejects_facturador_without_fiscal_data(self, client, auth_headers, facturador, receptor, db):
+        lote = Lote(
+            tenant_id=facturador.tenant_id,
+            etiqueta='Lote sin datos fiscales',
+            tipo='factura',
+            estado='pendiente',
+            total_facturas=1,
+            facturador_id=facturador.id,
+        )
+        db.session.add(lote)
+        db.session.flush()
+
+        factura = Factura(
+            tenant_id=facturador.tenant_id,
+            lote_id=lote.id,
+            facturador_id=facturador.id,
+            receptor_id=receptor.id,
+            tipo_comprobante=1,
+            concepto=1,
+            punto_venta=facturador.punto_venta,
+            fecha_emision=date(2026, 1, 15),
+            importe_total=Decimal('1000.00'),
+            importe_neto=Decimal('826.45'),
+            importe_iva=Decimal('173.55'),
+            estado='pendiente',
+        )
+        db.session.add(factura)
+        db.session.commit()
+
+        alt_facturador = Facturador(
+            tenant_id=facturador.tenant_id,
+            cuit='20333444559',
+            razon_social='Facturador sin datos fiscales',
+            punto_venta=12,
+            ambiente='testing',
+            activo=True,
+            cert_encrypted=b'cert',
+            key_encrypted=b'key',
+        )
+        db.session.add(alt_facturador)
+        db.session.commit()
+
+        response = client.post(
+            f'/api/lotes/{lote.id}/facturar',
+            headers=auth_headers,
+            json={'facturador_id': str(alt_facturador.id)}
+        )
+        assert response.status_code == 400
+        assert 'datos fiscales' in response.get_json()['error'].lower()
+
     def test_facturar_lote_retries_error_facturas_by_resetting_to_pending(self, client, auth_headers, facturador, receptor, db, monkeypatch):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',
@@ -355,10 +406,10 @@ class TestComprobantesZipLote:
             cuit='20333444558',
             razon_social='Facturador Reintento',
             punto_venta=11,
+            ingresos_brutos='902-111111-3',
+            fecha_inicio_actividades=date(2020, 1, 1),
             ambiente='testing',
             activo=True,
-            ingresos_brutos='20-33344455-8',
-            fecha_inicio_actividades=date(2020, 1, 1),
             cert_encrypted=b'cert',
             key_encrypted=b'key',
         )
@@ -386,8 +437,8 @@ class TestComprobantesZipLote:
         assert factura.error_mensaje is None
 
     def test_facturar_lote_returns_400_when_only_autorizadas(self, client, auth_headers, facturador, receptor, db):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio,1,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
 
         import_response = client.post(
             '/api/facturas/import',

@@ -84,7 +84,7 @@ def facturador(db, tenant):
         razon_social='Test SA',
         punto_venta=1,
         condicion_iva='IVA Responsable Inscripto',
-        ingresos_brutos='20-12345678-9',
+        ingresos_brutos='901-123456-7',
         fecha_inicio_actividades=date(2020, 1, 1),
         ambiente='testing',
         activo=True

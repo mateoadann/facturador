@@ -12,6 +12,8 @@ class Facturador(db.Model):
     razon_social = db.Column(db.String(255), nullable=False)
     direccion = db.Column(db.String(500))
     condicion_iva = db.Column(db.String(100))
+    ingresos_brutos = db.Column(db.String(50))
+    fecha_inicio_actividades = db.Column(db.Date)
     punto_venta = db.Column(db.Integer, nullable=False)
     cert_encrypted = db.Column(db.LargeBinary)
     key_encrypted = db.Column(db.LargeBinary)
@@ -38,6 +40,8 @@ class Facturador(db.Model):
             'razon_social': self.razon_social,
             'direccion': self.direccion,
             'condicion_iva': self.condicion_iva,
+            'ingresos_brutos': self.ingresos_brutos,
+            'fecha_inicio_actividades': self.fecha_inicio_actividades.isoformat() if self.fecha_inicio_actividades else None,
             'punto_venta': self.punto_venta,
             'ambiente': self.ambiente,
             'activo': self.activo,

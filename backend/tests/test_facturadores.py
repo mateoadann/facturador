@@ -27,9 +27,9 @@ class TestCreateFacturador:
             'cuit': '20987654321',
             'razon_social': 'Nueva SA',
             'punto_venta': 2,
+            'ingresos_brutos': '902-777777-1',
+            'fecha_inicio_actividades': '2021-05-10',
             'condicion_iva': 'IVA Responsable Inscripto',
-            'ingresos_brutos': '20-98765432-1',
-            'fecha_inicio_actividades': '2021-06-15',
             'ambiente': 'testing'
         })
         assert response.status_code == 201
@@ -37,8 +37,8 @@ class TestCreateFacturador:
         assert data['cuit'] == '20987654321'
         assert data['razon_social'] == 'Nueva SA'
         assert data['punto_venta'] == 2
-        assert data['ingresos_brutos'] == '20-98765432-1'
-        assert data['fecha_inicio_actividades'] == '2021-06-15'
+        assert data['ingresos_brutos'] == '902-777777-1'
+        assert data['fecha_inicio_actividades'] == '2021-05-10'
 
     def test_create_missing_fields(self, client, auth_headers):
         response = client.post('/api/facturadores', headers=auth_headers, json={
@@ -46,33 +46,13 @@ class TestCreateFacturador:
         })
         assert response.status_code == 400
 
-    def test_create_missing_ingresos_brutos(self, client, auth_headers):
-        response = client.post('/api/facturadores', headers=auth_headers, json={
-            'cuit': '20987654321',
-            'razon_social': 'Nueva SA',
-            'punto_venta': 2,
-            'fecha_inicio_actividades': '2021-06-15',
-        })
-        assert response.status_code == 400
-        assert 'ingresos_brutos' in response.get_json()['error']
-
-    def test_create_missing_fecha_inicio(self, client, auth_headers):
-        response = client.post('/api/facturadores', headers=auth_headers, json={
-            'cuit': '20987654321',
-            'razon_social': 'Nueva SA',
-            'punto_venta': 2,
-            'ingresos_brutos': '20-98765432-1',
-        })
-        assert response.status_code == 400
-        assert 'fecha_inicio_actividades' in response.get_json()['error']
-
     def test_create_duplicate(self, client, auth_headers, facturador):
         response = client.post('/api/facturadores', headers=auth_headers, json={
             'cuit': '20123456789',
             'razon_social': 'Duplicado SA',
             'punto_venta': 1,
-            'ingresos_brutos': '20-12345678-9',
-            'fecha_inicio_actividades': '2020-01-01',
+            'ingresos_brutos': '902-777777-2',
+            'fecha_inicio_actividades': '2021-05-11',
         })
         assert response.status_code == 400
         assert 'Ya existe' in response.get_json()['error']
@@ -83,24 +63,17 @@ class TestUpdateFacturador:
         response = client.put(
             f'/api/facturadores/{facturador.id}',
             headers=auth_headers,
-            json={'razon_social': 'Updated SA'}
-        )
-        assert response.status_code == 200
-        assert response.get_json()['razon_social'] == 'Updated SA'
-
-    def test_update_ingresos_brutos(self, client, auth_headers, facturador):
-        response = client.put(
-            f'/api/facturadores/{facturador.id}',
-            headers=auth_headers,
             json={
-                'ingresos_brutos': '30-99999999-0',
-                'fecha_inicio_actividades': '2022-03-10',
+                'razon_social': 'Updated SA',
+                'ingresos_brutos': '901-000000-0',
+                'fecha_inicio_actividades': '2022-07-15',
             }
         )
         assert response.status_code == 200
-        data = response.get_json()
-        assert data['ingresos_brutos'] == '30-99999999-0'
-        assert data['fecha_inicio_actividades'] == '2022-03-10'
+        payload = response.get_json()
+        assert payload['razon_social'] == 'Updated SA'
+        assert payload['ingresos_brutos'] == '901-000000-0'
+        assert payload['fecha_inicio_actividades'] == '2022-07-15'
 
     def test_update_not_found(self, client, auth_headers):
         import uuid

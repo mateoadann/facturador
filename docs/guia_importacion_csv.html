@@ -274,35 +274,26 @@
 
       <article class="slide">
         <h2>Paso 2: Columnas obligatorias</h2>
-        <p>Si falta alguna de estas columnas, la importación falla. Son <strong>10 columnas obligatorias</strong>:</p>
+        <p>Si falta alguna de estas columnas, la importación falla.</p>
         <div class="panel">
-          <div class="code">receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto, importe_iva, item_descripcion, item_cantidad, item_precio_unitario</div>
+          <h3>Obligatorias de factura</h3>
+          <div class="code">receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto</div>
+          <p class="small">El facturador ya no se indica en el CSV: se selecciona desde el modal de importación en la app.</p>
         </div>
         <div class="panel">
-          <h3>Sobre los ítems</h3>
-          <p>Los ítems son <strong>obligatorios</strong>. Cada fila del CSV representa una línea de ítem. Las filas que comparten el mismo <code>receptor_cuit</code>, <code>tipo_comprobante</code> y <code>fecha_emision</code> se agrupan en una sola factura con múltiples líneas.</p>
+          <h3>Obligatorias de ítems (para comprobante/PDF)</h3>
+          <div class="code">item_descripcion, item_cantidad, item_precio_unitario</div>
         </div>
-        <div class="panel">
-          <h3>Sobre el facturador</h3>
-          <p>El facturador <strong>no se indica en el CSV</strong>. Se selecciona en el modal de importación dentro de la app.</p>
-        </div>
-        <div class="panel">
-          <h3>Moneda y cotización</h3>
-          <p>La moneda siempre es <strong>PES</strong> (pesos argentinos) y la cotización siempre es <strong>1</strong>. Estos valores se asignan automáticamente; no necesitás incluirlos en el CSV.</p>
-        </div>
+        <p class="note">Si deseás que la factura tenga IVA discriminado, agregá la columna <strong>importe_iva</strong>. Si no la incluís, se marcará como "sin IVA".</p>
       </article>
 
       <article class="slide">
         <h2>Paso 3: Columnas opcionales</h2>
         <p>Estas columnas son opcionales pero útiles según el caso.</p>
         <div class="panel">
-          <div class="code">fecha_desde, fecha_hasta, fecha_vto_pago, cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro</div>
+          <div class="code">importe_iva, moneda, cotizacion, fecha_desde, fecha_hasta, fecha_vto_pago, cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro</div>
         </div>
         <p class="small">Si el CSV trae columnas extra que la app no usa, se descartan automáticamente y no frenan la importación.</p>
-        <div class="panel">
-          <h3>Validación cruzada de importes</h3>
-          <p class="warn">Si <code>importe_neto + importe_iva ≠ importe_total</code>, la factura se importa con estado <strong>error</strong>. Revisá que los importes cuadren antes de importar.</p>
-        </div>
       </article>
 
       <article class="slide">
@@ -393,9 +384,9 @@
 
       <article class="slide">
         <h2>Paso 8: Filas vs facturas (esto confunde mucho)</h2>
-        <p>Cada fila del CSV es un <strong>ítem (línea)</strong> de una factura. La app <strong>agrupa filas</strong> en una sola factura cuando comparten los mismos datos de: <code>receptor_cuit</code>, <code>tipo_comprobante</code> y <code>fecha_emision</code>.</p>
+        <p>La app puede <strong>juntar varias filas</strong> en una sola factura si comparten los mismos datos principales.</p>
         <div class="panel">
-          <p>Ejemplo: si 3 filas tienen el mismo receptor, tipo y fecha pero distinto <code>item_descripcion</code>, eso genera <strong>una factura con 3 líneas de ítems</strong>.</p>
+          <p>Ejemplo: si repetís misma factura y solo cambiás el ítem, eso se toma como <strong>una factura con varias líneas</strong>.</p>
           <p class="warn">Por eso 300 filas no siempre significa 300 facturas.</p>
         </div>
       </article>
@@ -412,8 +403,8 @@
             <p>Usar solo AAAA-MM-DD o DD/MM/AAAA.</p>
           </div>
           <div class="panel">
-            <h3>"Importes no cuadran"</h3>
-            <p>Verificar que importe_neto + importe_iva = importe_total en cada fila.</p>
+            <h3>"Facturador no encontrado"</h3>
+            <p>Verificar que el facturador seleccionado en el modal esté activo en el entorno correcto.</p>
           </div>
           <div class="panel">
             <h3>Errores ARCA luego de importar</h3>
@@ -424,23 +415,17 @@
 
       <article class="slide">
         <h2>Paso 10: Ejemplo de archivo mínimo</h2>
-        <p>Podés copiar esta base (una factura con un ítem):</p>
-        <div class="code">receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-20278955770,1,1,2026-02-25,12100,10000,2100,Servicio de consultoría,1,10000</div>
-        <p>Ejemplo con una factura de 2 ítems (2 filas, misma factura):</p>
-        <div class="code">receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-20278955770,1,1,2026-02-25,24200,20000,4200,Servicio de consultoría,1,10000
-20278955770,1,1,2026-02-25,24200,20000,4200,Desarrollo de software,2,5000</div>
-        <p class="small">El facturador se selecciona en el modal de importación. La moneda (PES) y cotización (1) se asignan automáticamente.</p>
+        <p>Podés copiar esta base:</p>
+        <div class="code">receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda,cotizacion
+20278955770,1,1,2026-02-25,12100,10000,2100,PES,1</div>
+        <p class="small">Recordá seleccionar el facturador en el modal de importación antes de subir el archivo.</p>
         <div class="panel">
           <h3>Checklist final</h3>
           <ul>
-            <li>✅ Las 10 columnas obligatorias presentes.</li>
-            <li>✅ Fechas válidas (AAAA-MM-DD o DD/MM/AAAA).</li>
+            <li>✅ Encabezado correcto.</li>
+            <li>✅ Fechas válidas.</li>
             <li>✅ Números sin separador de miles.</li>
-            <li>✅ importe_neto + importe_iva = importe_total.</li>
             <li>✅ Datos de nota asociados si corresponde.</li>
-            <li>✅ Facturador seleccionado en la app (no en el CSV).</li>
           </ul>
         </div>
       </article>

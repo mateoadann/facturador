@@ -23,6 +23,10 @@ from ..services.encryption import decrypt_certificate
 logger = logging.getLogger(__name__)
 
 
+def _facturador_datos_fiscales_completos(facturador: Facturador) -> bool:
+    return bool(facturador.ingresos_brutos and facturador.fecha_inicio_actividades)
+
+
 def _verbose_arca_logs_enabled() -> bool:
     return os.getenv('ARCA_VERBOSE_LOGS', 'false').strip().lower() == 'true'
 
@@ -103,18 +107,26 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             ).first()
 
             if not facturador or not facturador.cert_encrypted:
+                error_mensaje = 'Facturador sin certificados'
+            elif not _facturador_datos_fiscales_completos(facturador):
+                error_mensaje = 'Facturador sin datos fiscales completos'
+            else:
+                error_mensaje = None
+
+            if error_mensaje:
                 # Marcar todas las facturas de este facturador como error
                 for factura in facturas_grupo:
                     factura.estado = 'error'
-                    factura.error_mensaje = 'Facturador sin certificados'
+                    factura.error_mensaje = error_mensaje
                     errors += 1
                     processed += 1
                     _log_facturacion_trace(
-                        'factura.skip.sin_certificados',
+                        'factura.skip.facturador_invalido',
                         task_id=str(getattr(self.request, 'id', '')),
                         lote_id=str(lote_id),
                         factura_id=str(factura.id),
                         facturador_id=str(facturador_id),
+                        reason=error_mensaje,
                     )
                     self.update_state(state='PROGRESS', meta={
                         'current': processed,

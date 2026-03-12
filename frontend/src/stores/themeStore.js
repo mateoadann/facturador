@@ -6,10 +6,11 @@ export const useThemeStore = create(
     (set) => ({
       darkMode: false,
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
-      setDarkMode: (value) => set({ darkMode: value }),
+      setDarkMode: (enabled) => set({ darkMode: !!enabled }),
     }),
     {
       name: 'theme-storage',
+      partialize: (state) => ({ darkMode: state.darkMode }),
     }
   )
 )
