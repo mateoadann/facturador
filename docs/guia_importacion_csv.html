@@ -277,7 +277,8 @@
         <p>Si falta alguna de estas columnas, la importación falla.</p>
         <div class="panel">
           <h3>Obligatorias de factura</h3>
-          <div class="code">facturador_cuit, receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto</div>
+          <div class="code">receptor_cuit, tipo_comprobante, concepto, fecha_emision, importe_total, importe_neto</div>
+          <p class="small">El facturador ya no se indica en el CSV: se selecciona desde el modal de importación en la app.</p>
         </div>
         <div class="panel">
           <h3>Obligatorias de ítems (para comprobante/PDF)</h3>
@@ -403,7 +404,7 @@
           </div>
           <div class="panel">
             <h3>"Facturador no encontrado"</h3>
-            <p>Verificar CUIT y que esté activo en el entorno correcto.</p>
+            <p>Verificar que el facturador seleccionado en el modal esté activo en el entorno correcto.</p>
           </div>
           <div class="panel">
             <h3>Errores ARCA luego de importar</h3>
@@ -415,8 +416,9 @@
       <article class="slide">
         <h2>Paso 10: Ejemplo de archivo mínimo</h2>
         <p>Podés copiar esta base:</p>
-        <div class="code">facturador_cuit,receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda,cotizacion
-20442030147,20278955770,1,1,2026-02-25,12100,10000,2100,PES,1</div>
+        <div class="code">receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda,cotizacion
+20278955770,1,1,2026-02-25,12100,10000,2100,PES,1</div>
+        <p class="small">Recordá seleccionar el facturador en el modal de importación antes de subir el archivo.</p>
         <div class="panel">
           <h3>Checklist final</h3>
           <ul>

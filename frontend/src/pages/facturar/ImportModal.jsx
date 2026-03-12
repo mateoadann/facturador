@@ -1,24 +1,40 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Upload, FileText, Download, ChevronDown } from 'lucide-react'
 import { api } from '@/api/client'
-import { Button, Input, Modal } from '@/components/ui'
+import { Button, Input, Modal, Select } from '@/components/ui'
 import { toast } from '@/stores/toastStore'
+import { formatCUIT } from '@/lib/utils'
 
 const TEMPLATE_XLSX_URL = '/templates/facturas_template.xlsx'
 
 function ImportModal({ isOpen, onClose, onSuccess }) {
   const [file, setFile] = useState(null)
   const [etiqueta, setEtiqueta] = useState('')
+  const [facturadorId, setFacturadorId] = useState('')
   const [errors, setErrors] = useState([])
   const [isTemplateOpen, setIsTemplateOpen] = useState(false)
   const [isFormatoOpen, setIsFormatoOpen] = useState(false)
+
+  const { data: facturadoresData } = useQuery({
+    queryKey: ['facturadores', { activo: true, per_page: 200 }],
+    queryFn: async () => {
+      const response = await api.facturadores.list({ activo: true, per_page: 200 })
+      return response.data
+    },
+    enabled: isOpen,
+  })
+
+  const facturadoresDisponibles = (facturadoresData?.items || []).filter(
+    (facturador) => facturador.activo && facturador.tiene_certificados
+  )
 
   const importMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('etiqueta', etiqueta.trim())
+      formData.append('facturador_id', facturadorId)
       formData.append('tipo', 'factura')
       return api.facturas.import(formData)
     },
@@ -45,6 +61,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
   const handleClose = () => {
     setFile(null)
     setEtiqueta('')
+    setFacturadorId('')
     setErrors([])
     setIsTemplateOpen(false)
     setIsFormatoOpen(false)
@@ -83,7 +100,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
           </Button>
           <Button
             onClick={() => importMutation.mutate()}
-            disabled={!file || !etiqueta.trim() || importMutation.isPending}
+            disabled={!file || !etiqueta.trim() || !facturadorId || importMutation.isPending}
           >
             {importMutation.isPending ? 'Importando...' : 'Importar'}
           </Button>
@@ -148,14 +165,37 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
           </label>
         </div>
 
-        {/* Step 2: Format info */}
+        {/* Step 2: Select facturador */}
+        <div>
+          <h3 className="mb-3 text-sm font-medium text-text-primary">
+            2. Seleccionar facturador
+          </h3>
+          <Select
+            value={facturadorId}
+            onChange={(e) => setFacturadorId(e.target.value)}
+          >
+            <option value="">Seleccionar facturador...</option>
+            {facturadoresDisponibles.map((facturador) => (
+              <option key={facturador.id} value={facturador.id}>
+                {facturador.razon_social} ({formatCUIT(facturador.cuit)}) - PV {facturador.punto_venta} - {facturador.ambiente}
+              </option>
+            ))}
+          </Select>
+          {facturadoresDisponibles.length === 0 && isOpen && (
+            <p className="mt-2 text-xs text-warning-foreground">
+              No hay facturadores activos con certificados cargados.
+            </p>
+          )}
+        </div>
+
+        {/* Step 3: Format info */}
         <div>
           <button
             type="button"
             onClick={() => setIsFormatoOpen((prev) => !prev)}
             className="flex w-full items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-left text-sm font-medium text-text-primary hover:bg-secondary/50"
           >
-            <span>2. Formato esperado</span>
+            <span>3. Formato esperado</span>
             <ChevronDown
               className={`h-4 w-4 text-text-secondary transition-transform ${isFormatoOpen ? 'rotate-180' : ''}`}
             />
@@ -167,7 +207,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
               </p>
               <p className="mb-2">Columnas requeridas:</p>
               <code className="block text-text-muted">
-                facturador_cuit, receptor_cuit, tipo_comprobante, concepto,
+                receptor_cuit, tipo_comprobante, concepto,
                 fecha_emision, importe_total, importe_neto
               </code>
               <p className="mt-2">
@@ -177,7 +217,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
           )}
         </div>
 
-        {/* Step 3: Label */}
+        {/* Step 4: Label */}
         <div>
           <Input
             label="Etiqueta del lote (requerido, unico)"
