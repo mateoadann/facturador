@@ -14,6 +14,10 @@ lotes_bp = Blueprint('lotes', __name__)
 ACTIVE_TASK_STATES = {'STARTED', 'PROGRESS', 'RETRY'}
 
 
+def _facturador_datos_fiscales_completos(facturador: Facturador) -> bool:
+    return bool(facturador.ingresos_brutos and facturador.fecha_inicio_actividades)
+
+
 @lotes_bp.route('', methods=['GET'])
 @permission_required('facturas:ver')
 def list_lotes():
@@ -158,6 +162,9 @@ def facturar_lote(lote_id):
         if not facturador.cert_encrypted or not facturador.key_encrypted:
             return jsonify({'error': 'El facturador seleccionado no tiene certificados cargados'}), 400
 
+        if not _facturador_datos_fiscales_completos(facturador):
+            return jsonify({'error': 'El facturador seleccionado no tiene datos fiscales completos'}), 400
+
         lote.facturador_id = facturador.id
     elif not lote.facturador_id:
         facturador_ids = db.session.query(Factura.facturador_id).filter_by(
@@ -181,6 +188,9 @@ def facturar_lote(lote_id):
 
     if not facturador.cert_encrypted or not facturador.key_encrypted:
         return jsonify({'error': 'El facturador del lote no tiene certificados cargados'}), 400
+
+    if not _facturador_datos_fiscales_completos(facturador):
+        return jsonify({'error': 'El facturador del lote no tiene datos fiscales completos'}), 400
 
     _assign_facturador_to_pending_facturas(
         lote_id=lote_id,
