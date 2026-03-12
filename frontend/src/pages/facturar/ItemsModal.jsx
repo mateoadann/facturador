@@ -92,8 +92,6 @@ function ItemsModal({ factura, onClose, onSaved }) {
       importe_total: String(factura.importe_total ?? 0),
       importe_neto: String(factura.importe_neto ?? 0),
       importe_iva: String(factura.importe_iva ?? 0),
-      moneda: factura.moneda || 'PES',
-      cotizacion: String(factura.cotizacion ?? 1),
       cbte_asoc_tipo: factura.cbte_asoc_tipo ? String(factura.cbte_asoc_tipo) : '',
       cbte_asoc_pto_vta: factura.cbte_asoc_pto_vta ? String(factura.cbte_asoc_pto_vta) : '',
       cbte_asoc_nro: factura.cbte_asoc_nro ? String(factura.cbte_asoc_nro) : '',
@@ -166,8 +164,6 @@ function ItemsModal({ factura, onClose, onSaved }) {
     if (!formData.tipo_comprobante) return 'Tipo de comprobante requerido'
     if (!formData.concepto) return 'Concepto requerido'
     if (!formData.fecha_emision) return 'Fecha de emisión requerida'
-    if (!formData.moneda) return 'Moneda requerida'
-
     const concepto = Number(formData.concepto)
     if (concepto === 2 || concepto === 3) {
       if (!formData.fecha_desde || !formData.fecha_hasta || !formData.fecha_vto_pago) {
@@ -185,9 +181,8 @@ function ItemsModal({ factura, onClose, onSaved }) {
     const total = Number(formData.importe_total)
     const neto = Number(formData.importe_neto)
     const iva = Number(formData.importe_iva)
-    const cotizacion = Number(formData.cotizacion)
-    if ([total, neto, iva, cotizacion].some((v) => Number.isNaN(v))) return 'Importes inválidos'
-    if (total < 0 || neto < 0 || iva < 0 || cotizacion < 0) return 'Los importes deben ser mayores o iguales a 0'
+    if ([total, neto, iva].some((v) => Number.isNaN(v))) return 'Importes inválidos'
+    if (total < 0 || neto < 0 || iva < 0) return 'Los importes deben ser mayores o iguales a 0'
     if (total < neto) return 'importe_total debe ser mayor o igual a importe_neto'
 
     for (let i = 0; i < formData.items.length; i += 1) {
@@ -223,8 +218,6 @@ function ItemsModal({ factura, onClose, onSaved }) {
       importe_total: Number(formData.importe_total),
       importe_neto: Number(formData.importe_neto),
       importe_iva: Number(formData.importe_iva || 0),
-      moneda: formData.moneda,
-      cotizacion: Number(formData.cotizacion || 1),
       cbte_asoc_tipo: formData.cbte_asoc_tipo ? Number(formData.cbte_asoc_tipo) : null,
       cbte_asoc_pto_vta: formData.cbte_asoc_pto_vta ? Number(formData.cbte_asoc_pto_vta) : null,
       cbte_asoc_nro: formData.cbte_asoc_nro ? Number(formData.cbte_asoc_nro) : null,
@@ -307,15 +300,13 @@ function ItemsModal({ factura, onClose, onSaved }) {
           <Input label="Vto pago" type="date" value={formData.fecha_vto_pago} onChange={(e) => updateField('fecha_vto_pago', e.target.value)} disabled={!canSave} />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Input label="Importe total" type="number" step="0.01" value={formData.importe_total} onChange={(e) => updateField('importe_total', e.target.value)} disabled={!canSave} />
           <Input label="Importe neto" type="number" step="0.01" value={formData.importe_neto} onChange={(e) => updateField('importe_neto', e.target.value)} disabled={!canSave} />
           <Input label="IVA" type="number" step="0.01" value={formData.importe_iva} onChange={(e) => updateField('importe_iva', e.target.value)} disabled={!canSave} />
-          <Input label="Cotización" type="number" step="0.000001" value={formData.cotizacion} onChange={(e) => updateField('cotizacion', e.target.value)} disabled={!canSave} />
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Input label="Moneda" value={formData.moneda} onChange={(e) => updateField('moneda', e.target.value)} disabled={!canSave} />
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <Input label="Cbte asoc tipo" type="number" value={formData.cbte_asoc_tipo} onChange={(e) => updateField('cbte_asoc_tipo', e.target.value)} disabled={!canSave} />
           <Input label="Cbte asoc pto vta" type="number" value={formData.cbte_asoc_pto_vta} onChange={(e) => updateField('cbte_asoc_pto_vta', e.target.value)} disabled={!canSave} />
           <Input label="Cbte asoc nro" type="number" value={formData.cbte_asoc_nro} onChange={(e) => updateField('cbte_asoc_nro', e.target.value)} disabled={!canSave} />

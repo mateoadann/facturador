@@ -2,6 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --color-primary: #2563EB;
+    --color-primary-foreground: #FFFFFF;
+    --color-secondary: #F1F5F9;
+    --color-secondary-foreground: #1E293B;
+    --color-success: #22C55E;
+    --color-success-light: #DCFCE7;
+    --color-success-foreground: #166534;
+    --color-warning: #F59E0B;
+    --color-warning-light: #FEF3C7;
+    --color-warning-foreground: #92400E;
+    --color-error: #EF4444;
+    --color-error-light: #FEE2E2;
+    --color-error-foreground: #DC2626;
+    --color-sidebar: #F8FAFC;
+    --color-card: #FFFFFF;
+    --color-border: #E2E8F0;
+    --color-text-primary: #1E293B;
+    --color-text-secondary: #64748B;
+    --color-text-muted: #94A3B8;
+    --color-text-on-dark: #FFFFFF;
+    --color-background: #F8FAFC;
+    --color-scrollbar-track: #F1F5F9;
+    --color-scrollbar-thumb: #CBD5E1;
+    --color-scrollbar-thumb-hover: #94A3B8;
+  }
+
+  .dark {
+    --color-primary: #3B82F6;
+    --color-primary-foreground: #FFFFFF;
+    --color-secondary: #1E293B;
+    --color-secondary-foreground: #E2E8F0;
+    --color-success: #22C55E;
+    --color-success-light: #14532D;
+    --color-success-foreground: #86EFAC;
+    --color-warning: #F59E0B;
+    --color-warning-light: #78350F;
+    --color-warning-foreground: #FDE68A;
+    --color-error: #EF4444;
+    --color-error-light: #7F1D1D;
+    --color-error-foreground: #FCA5A5;
+    --color-sidebar: #0F172A;
+    --color-card: #1E293B;
+    --color-border: #334155;
+    --color-text-primary: #F1F5F9;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #64748B;
+    --color-text-on-dark: #FFFFFF;
+    --color-background: #0F172A;
+    --color-scrollbar-track: #1E293B;
+    --color-scrollbar-thumb: #475569;
+    --color-scrollbar-thumb-hover: #64748B;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -9,9 +65,9 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background-color: #F8FAFC;
-  color: #1E293B;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
 }
 
 /* Scrollbar styling */
@@ -21,14 +77,14 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #F1F5F9;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
+  background: var(--color-scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  background: var(--color-scrollbar-thumb-hover);
 }

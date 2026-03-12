@@ -29,6 +29,8 @@ function Facturadores() {
     razon_social: '',
     direccion: '',
     condicion_iva: '',
+    ingresos_brutos: '',
+    fecha_inicio_actividades: '',
     punto_venta: '',
     ambiente: 'testing',
   })
@@ -107,6 +109,8 @@ function Facturadores() {
         razon_social: facturador.razon_social,
         direccion: facturador.direccion || '',
         condicion_iva: facturador.condicion_iva || '',
+        ingresos_brutos: facturador.ingresos_brutos || '',
+        fecha_inicio_actividades: facturador.fecha_inicio_actividades || '',
         punto_venta: facturador.punto_venta.toString(),
         ambiente: facturador.ambiente,
       })
@@ -117,6 +121,8 @@ function Facturadores() {
         razon_social: '',
         direccion: '',
         condicion_iva: '',
+        ingresos_brutos: '',
+        fecha_inicio_actividades: '',
         punto_venta: '',
         ambiente: 'testing',
       })
@@ -342,26 +348,42 @@ function Facturadores() {
             onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
           />
 
+          <Select
+            label="Condición IVA"
+            value={formData.condicion_iva}
+            onChange={(e) => setFormData({ ...formData, condicion_iva: e.target.value })}
+          >
+            <option value="">Seleccionar...</option>
+            <option value="IVA Responsable Inscripto">IVA Responsable Inscripto</option>
+            <option value="Responsable Monotributo">Responsable Monotributo</option>
+            <option value="IVA Exento">IVA Exento</option>
+          </Select>
+
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Condición IVA"
-              value={formData.condicion_iva}
-              onChange={(e) => setFormData({ ...formData, condicion_iva: e.target.value })}
-            >
-              <option value="">Seleccionar...</option>
-              <option value="IVA Responsable Inscripto">IVA Responsable Inscripto</option>
-              <option value="Responsable Monotributo">Responsable Monotributo</option>
-              <option value="IVA Exento">IVA Exento</option>
-            </Select>
+            <Input
+              label="Ingresos Brutos"
+              placeholder="Ej: 20-12345678-9"
+              value={formData.ingresos_brutos}
+              onChange={(e) => setFormData({ ...formData, ingresos_brutos: e.target.value })}
+              required
+            />
 
             <Input
-              label="Punto de Venta"
-              type="number"
-              placeholder="1"
-              value={formData.punto_venta}
-              onChange={(e) => setFormData({ ...formData, punto_venta: e.target.value })}
+              label="Fecha Inicio de Actividades"
+              type="date"
+              value={formData.fecha_inicio_actividades}
+              onChange={(e) => setFormData({ ...formData, fecha_inicio_actividades: e.target.value })}
+              required
             />
           </div>
+
+          <Input
+            label="Punto de Venta"
+            type="number"
+            placeholder="1"
+            value={formData.punto_venta}
+            onChange={(e) => setFormData({ ...formData, punto_venta: e.target.value })}
+          />
 
           <div>
             <label className="mb-2 block text-sm font-medium text-text-primary">

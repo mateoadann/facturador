@@ -167,10 +167,19 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
               </p>
               <p className="mb-2">Columnas requeridas:</p>
               <code className="block text-text-muted">
-                facturador_cuit, receptor_cuit, tipo_comprobante, concepto,
-                fecha_emision, importe_total, importe_neto
+                receptor_cuit, tipo_comprobante, concepto, fecha_emision,
+                importe_total, importe_neto, importe_iva,
+                item_descripcion, item_cantidad, item_precio_unitario
               </code>
-              <p className="mt-2">
+              <p className="mt-2 mb-2">
+                Columnas opcionales: fecha_desde, fecha_hasta, fecha_vto_pago,
+                cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro, item_alicuota_iva_id.
+              </p>
+              <p className="mb-2">
+                Cada fila representa un item. Las filas con el mismo receptor_cuit, tipo_comprobante
+                y fecha_emision se agrupan como items de la misma factura.
+              </p>
+              <p>
                 La condición IVA del receptor se determina automáticamente desde el receptor/padrón.
               </p>
             </div>

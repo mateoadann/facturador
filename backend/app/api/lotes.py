@@ -182,6 +182,9 @@ def facturar_lote(lote_id):
     if not facturador.cert_encrypted or not facturador.key_encrypted:
         return jsonify({'error': 'El facturador del lote no tiene certificados cargados'}), 400
 
+    if not facturador.ingresos_brutos or not facturador.fecha_inicio_actividades:
+        return jsonify({'error': 'El facturador no tiene completos los datos de Ingresos Brutos y/o Fecha de Inicio de Actividades'}), 400
+
     _assign_facturador_to_pending_facturas(
         lote_id=lote_id,
         tenant_id=g.tenant_id,

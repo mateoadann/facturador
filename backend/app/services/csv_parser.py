@@ -6,13 +6,16 @@ from typing import List, Dict, Any, Tuple
 
 
 REQUIRED_COLUMNS = [
-    'facturador_cuit',
     'receptor_cuit',
     'tipo_comprobante',
     'concepto',
     'fecha_emision',
     'importe_total',
-    'importe_neto'
+    'importe_neto',
+    'importe_iva',
+    'item_descripcion',
+    'item_cantidad',
+    'item_precio_unitario',
 ]
 
 GROUP_KEY_EXCLUDE_COLUMNS = {
@@ -20,24 +23,19 @@ GROUP_KEY_EXCLUDE_COLUMNS = {
     'importe_total',
     'importe_neto',
     'importe_iva',
+    '_declared_importe_total',
+    '_declared_importe_neto',
+    '_declared_importe_iva',
+    '_validation_error',
 }
 
 OPTIONAL_COLUMNS = [
     'fecha_desde',
     'fecha_hasta',
     'fecha_vto_pago',
-    'importe_iva',
-    'moneda',
-    'cotizacion',
     'cbte_asoc_tipo',
     'cbte_asoc_pto_vta',
-    'cbte_asoc_nro'
-]
-
-ITEM_COLUMNS = [
-    'item_descripcion',
-    'item_cantidad',
-    'item_precio_unitario',
+    'cbte_asoc_nro',
 ]
 
 
@@ -81,8 +79,7 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
                     grouped['importe_neto_rows'].append(factura.get('importe_neto'))
                     grouped['importe_iva_rows'].append(factura.get('importe_iva'))
 
-                    if factura.get('items'):
-                        grouped['items'].extend(factura['items'])
+                    grouped['items'].extend(factura['items'])
             except ValueError as e:
                 errors.append(f"Fila {row_num}: {str(e)}")
 
@@ -94,22 +91,13 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         grouped = grouped_facturas[key]
         factura = grouped['factura']
 
-        if grouped['items']:
-            factura['items'] = grouped['items']
-            # Cuando hay items, recalcular importes desde los items
-            factura = _recalculate_from_items(factura, grouped)
-        else:
-            # Sin items - usar importes directo del CSV
-            factura['importe_total'] = resolve_grouped_amount(grouped['importe_total_rows'])
-            factura['importe_neto'] = resolve_grouped_amount(grouped['importe_neto_rows'])
+        factura['items'] = grouped['items']
+        # Items siempre presentes: recalcular importes desde los items
+        factura = _recalculate_from_items(factura, grouped)
 
-            importe_iva = resolve_grouped_amount(grouped['importe_iva_rows'])
-            if importe_iva is not None:
-                factura['importe_iva'] = importe_iva
-                factura['items_sin_iva'] = False
-            else:
-                factura['importe_iva'] = Decimal('0')
-                factura['items_sin_iva'] = True
+        # Cross-validation: comparar declarados vs calculados (T2)
+        validation_error = _cross_validate_importes(factura)
+        factura['_validation_error'] = validation_error
 
         facturas.append(factura)
 
@@ -155,6 +143,36 @@ def _recalculate_from_items(factura: Dict[str, Any], grouped: Dict) -> Dict[str,
     return factura
 
 
+def _cross_validate_importes(factura: Dict[str, Any]) -> str | None:
+    """Validates that declared importes match computed importes.
+
+    Returns error message string if mismatch, None if OK.
+    Tolerance: Decimal('0.02') to absorb rounding artifacts.
+    """
+    tolerance = Decimal('0.02')
+
+    declared_total = factura.get('_declared_importe_total')
+    declared_neto = factura.get('_declared_importe_neto')
+    declared_iva = factura.get('_declared_importe_iva')
+
+    computed_total = factura['importe_total']
+    computed_neto = factura['importe_neto']
+    computed_iva = factura['importe_iva']
+
+    errors = []
+
+    if declared_total is not None and abs(computed_total - declared_total) > tolerance:
+        errors.append(f"importe_total declarado ({declared_total}) != calculado ({computed_total})")
+
+    if declared_neto is not None and abs(computed_neto - declared_neto) > tolerance:
+        errors.append(f"importe_neto declarado ({declared_neto}) != calculado ({computed_neto})")
+
+    if declared_iva is not None and abs(computed_iva - declared_iva) > tolerance:
+        errors.append(f"importe_iva declarado ({declared_iva}) != calculado ({computed_iva})")
+
+    return "; ".join(errors) if errors else None
+
+
 def build_factura_group_key(factura: Dict[str, Any]) -> tuple:
     key_data = {
         key: value
@@ -180,14 +198,19 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
     """Parsea una fila del CSV a un diccionario de factura."""
 
     factura = {
-        'facturador_cuit': clean_cuit(row.get('facturador_cuit', '')),
         'receptor_cuit': clean_cuit(row.get('receptor_cuit', '')),
         'tipo_comprobante': parse_int(row.get('tipo_comprobante'), 'tipo_comprobante'),
         'concepto': parse_int(row.get('concepto'), 'concepto'),
         'fecha_emision': parse_date(row.get('fecha_emision'), 'fecha_emision'),
         'importe_total': parse_decimal(row.get('importe_total'), 'importe_total'),
         'importe_neto': parse_decimal(row.get('importe_neto'), 'importe_neto'),
+        'importe_iva': parse_decimal(row.get('importe_iva'), 'importe_iva'),
     }
+
+    # Guardar valores declarados para cross-validation (T2)
+    factura['_declared_importe_total'] = factura['importe_total']
+    factura['_declared_importe_neto'] = factura['importe_neto']
+    factura['_declared_importe_iva'] = factura['importe_iva']
 
     # Campos opcionales
     if row.get('fecha_desde'):
@@ -196,12 +219,8 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
         factura['fecha_hasta'] = parse_date(row.get('fecha_hasta'), 'fecha_hasta')
     if row.get('fecha_vto_pago'):
         factura['fecha_vto_pago'] = parse_date(row.get('fecha_vto_pago'), 'fecha_vto_pago')
-    if row.get('importe_iva'):
-        factura['importe_iva'] = parse_decimal(row.get('importe_iva'), 'importe_iva')
-    if row.get('moneda'):
-        factura['moneda'] = row.get('moneda', 'PES')
-    if row.get('cotizacion'):
-        factura['cotizacion'] = parse_decimal(row.get('cotizacion'), 'cotizacion')
+
+    # moneda y cotizacion se ignoran silenciosamente (ya no se usan)
 
     # Comprobante asociado (para notas de crédito/débito)
     if row.get('cbte_asoc_tipo'):
@@ -211,13 +230,19 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
     if row.get('cbte_asoc_nro'):
         factura['cbte_asoc_nro'] = parse_int(row.get('cbte_asoc_nro'), 'cbte_asoc_nro')
 
-    # Items (si están presentes)
-    if row.get('item_descripcion'):
-        factura['items'] = [{
-            'descripcion': row.get('item_descripcion'),
-            'cantidad': parse_decimal(row.get('item_cantidad', '1'), 'item_cantidad'),
-            'precio_unitario': parse_decimal(row.get('item_precio_unitario', '0'), 'item_precio_unitario'),
-        }]
+    # Items (siempre requeridos)
+    item_descripcion = (row.get('item_descripcion') or '').strip()
+    if not item_descripcion:
+        raise ValueError("Campo 'item_descripcion' es requerido y no puede estar vacío")
+
+    item_cantidad_raw = (row.get('item_cantidad') or '').strip()
+    item_precio_raw = (row.get('item_precio_unitario') or '').strip()
+
+    factura['items'] = [{
+        'descripcion': item_descripcion,
+        'cantidad': parse_decimal(item_cantidad_raw, 'item_cantidad') if item_cantidad_raw else Decimal('1'),
+        'precio_unitario': parse_decimal(item_precio_raw, 'item_precio_unitario') if item_precio_raw else Decimal('0'),
+    }]
 
     fecha_emision = factura['fecha_emision']
     factura['fecha_desde'] = factura.get('fecha_desde') or fecha_emision

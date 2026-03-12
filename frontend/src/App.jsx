@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import { useThemeStore } from './stores/themeStore'
 import Layout from './components/layout/Layout'
 import ToastContainer from './components/ui/Toast'
 import Login from './pages/Login'
@@ -39,6 +41,16 @@ function ProtectedRoute({ permission, children }) {
 }
 
 function App() {
+  const darkMode = useThemeStore((s) => s.darkMode)
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [darkMode])
+
   return (
     <BrowserRouter>
       <ToastContainer />

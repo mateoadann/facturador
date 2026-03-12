@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import Facturador
@@ -58,7 +60,7 @@ def create_facturador():
     if not data:
         return jsonify({'error': 'Datos requeridos'}), 400
 
-    required_fields = ['cuit', 'razon_social', 'punto_venta']
+    required_fields = ['cuit', 'razon_social', 'punto_venta', 'ingresos_brutos', 'fecha_inicio_actividades']
     for field in required_fields:
         if not data.get(field):
             return jsonify({'error': f'Campo {field} es requerido'}), 400
@@ -83,6 +85,8 @@ def create_facturador():
         direccion=data.get('direccion'),
         condicion_iva=data.get('condicion_iva'),
         punto_venta=data['punto_venta'],
+        ingresos_brutos=data['ingresos_brutos'],
+        fecha_inicio_actividades=datetime.strptime(data['fecha_inicio_actividades'], '%Y-%m-%d').date(),
         ambiente=ambiente
     )
 
@@ -148,6 +152,10 @@ def update_facturador(facturador_id):
         facturador.ambiente = nuevo_ambiente
     if 'activo' in data:
         facturador.activo = data['activo']
+    if 'ingresos_brutos' in data:
+        facturador.ingresos_brutos = data['ingresos_brutos']
+    if 'fecha_inicio_actividades' in data:
+        facturador.fecha_inicio_actividades = datetime.strptime(data['fecha_inicio_actividades'], '%Y-%m-%d').date()
 
     log_action('facturador:editar', recurso='facturador', recurso_id=facturador.id)
     db.session.commit()

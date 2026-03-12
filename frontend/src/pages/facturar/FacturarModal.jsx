@@ -20,7 +20,11 @@ function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
   })
 
   const facturadoresDisponibles = (facturadoresData?.items || []).filter(
-    (facturador) => facturador.activo && facturador.tiene_certificados
+    (facturador) =>
+      facturador.activo &&
+      facturador.tiene_certificados &&
+      facturador.ingresos_brutos &&
+      facturador.fecha_inicio_actividades
   )
 
   const facturarMutation = useMutation({

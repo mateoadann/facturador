@@ -16,10 +16,13 @@ import {
   KeyRound,
   Mail,
   LifeBuoy,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/sidebarStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { useLogout } from '@/hooks/useAuth'
 import ChangePasswordModal from '@/components/auth/ChangePasswordModal'
 
@@ -74,6 +77,7 @@ function NavItem({ icon: Icon, label, href, isCollapsed }) {
 function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore()
   const { user, tenant } = useAuthStore()
+  const { darkMode, toggleDarkMode } = useThemeStore()
   const { mutate: logout } = useLogout()
   const permisos = user?.permisos || []
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
@@ -162,6 +166,42 @@ function Sidebar() {
             )
           })}
         </nav>
+
+        {/* Dark mode toggle */}
+        <div className="mt-4 border-t border-border pt-4">
+          <button
+            onClick={toggleDarkMode}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-text-secondary hover:bg-secondary',
+              isCollapsed && 'justify-center px-0'
+            )}
+            title="Modo oscuro"
+          >
+            {darkMode ? (
+              <Moon className="h-5 w-5 flex-shrink-0" />
+            ) : (
+              <Sun className="h-5 w-5 flex-shrink-0" />
+            )}
+            {!isCollapsed && (
+              <div className="flex flex-1 items-center justify-between">
+                <span>Modo oscuro</span>
+                <span
+                  className={cn(
+                    'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                    darkMode ? 'bg-primary' : 'bg-border'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                      darkMode ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                    )}
+                  />
+                </span>
+              </div>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Bottom */}

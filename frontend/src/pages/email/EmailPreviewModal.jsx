@@ -45,7 +45,7 @@ function EmailPreviewModal({ isOpen, onClose, previewPayload }) {
             <p className="text-sm font-medium text-text-primary">{data?.subject || '-'}</p>
           </div>
 
-          <div className="overflow-hidden rounded-md border border-border bg-white">
+          <div className="overflow-hidden rounded-md border border-border bg-card">
             <iframe
               title="Vista previa de email"
               srcDoc={data?.html || ''}

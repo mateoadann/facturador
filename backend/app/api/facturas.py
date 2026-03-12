@@ -312,74 +312,67 @@ def import_csv():
     db.session.add(lote)
     db.session.flush()
 
+    # Obtener facturador desde form data
+    facturador_id_str = request.form.get('facturador_id')
+    if not facturador_id_str:
+        return jsonify({'error': 'facturador_id es requerido'}), 400
+
+    try:
+        facturador_id = UUID(facturador_id_str)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'facturador_id inválido'}), 400
+
+    facturador = Facturador.query.filter_by(
+        id=facturador_id,
+        tenant_id=g.tenant_id,
+        activo=True
+    ).first()
+    if not facturador:
+        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 400
+
     # Procesar cada factura
     facturas_creadas = []
     errores_creacion = []
-    facturador_ids = set()
+    warnings = []
 
     for idx, factura_data in enumerate(facturas_data):
         try:
-            factura = create_factura_from_data(factura_data, lote.id, g.tenant_id)
+            factura = create_factura_from_data(factura_data, lote.id, g.tenant_id, facturador)
             facturas_creadas.append(factura)
-            facturador_ids.add(factura.facturador_id)
+            if factura.estado == 'error' and factura.error_mensaje:
+                warnings.append(f"Fila {idx + 1}: {factura.error_mensaje}")
         except ValueError as e:
             errores_creacion.append(f"Fila {idx + 2}: {str(e)}")
-
-    if len(facturador_ids) > 1:
-        db.session.rollback()
-        return jsonify({
-            'error': 'El lote debe contener facturas de un unico facturador/entorno',
-            'details': ['Todas las filas del CSV deben pertenecer al mismo facturador para este lote']
-        }), 400
 
     if facturas_creadas:
         lote.facturador_id = facturas_creadas[0].facturador_id
 
     lote.total_facturas = len(facturas_creadas)
+    facturas_con_error = sum(1 for f in facturas_creadas if f.estado == 'error')
+    lote.facturas_error = facturas_con_error
 
     log_action('lote:importar', recurso='lote', recurso_id=lote.id,
-               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas)})
+               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas),
+                        'con_errores_validacion': facturas_con_error})
     db.session.commit()
 
     return jsonify({
         'lote': lote.to_dict(),
         'facturas_importadas': len(facturas_creadas),
         'errores_parseo': parse_errors,
-        'errores_creacion': errores_creacion
+        'errores_creacion': errores_creacion,
+        'warnings': warnings
     }), 201
 
 
-def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factura:
-    """Crear una factura a partir de datos parseados del CSV."""
+def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturador: 'Facturador') -> Factura:
+    """Crear una factura a partir de datos parseados del CSV.
 
-    # Buscar facturador por CUIT, priorizando el ambiente configurado
-    facturadores = Facturador.query.filter_by(
-        tenant_id=tenant_id,
-        cuit=data['facturador_cuit'],
-        activo=True
-    ).all()
+    El facturador se recibe directamente (seleccionado via facturador_id en form data).
+    """
 
-    if not facturadores:
-        raise ValueError(f"Facturador con CUIT {data['facturador_cuit']} no encontrado")
-
-    ambiente_preferido = current_app.config.get('ARCA_AMBIENTE', 'testing')
-    facturadores_filtrados = [f for f in facturadores if f.ambiente == ambiente_preferido]
-
-    if len(facturadores_filtrados) == 1:
-        facturador = facturadores_filtrados[0]
-    elif len(facturadores_filtrados) > 1:
-        raise ValueError(
-            f"Hay múltiples facturadores activos para CUIT {data['facturador_cuit']} en ambiente {ambiente_preferido}. "
-            "Desactivá duplicados o ajustá la configuración."
-        )
-    elif len(facturadores) == 1:
-        facturador = facturadores[0]
-    else:
-        ambientes = ', '.join(sorted({f.ambiente for f in facturadores}))
-        raise ValueError(
-            f"No hay facturador activo para CUIT {data['facturador_cuit']} en ambiente {ambiente_preferido}. "
-            f"Disponibles: {ambientes}"
-        )
+    if not facturador:
+        raise ValueError("Facturador no proporcionado")
 
     # Buscar o crear receptor
     receptor = Receptor.query.filter_by(
@@ -421,8 +414,8 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
         importe_total=importe_total,
         importe_neto=importe_neto,
         importe_iva=importe_iva,
-        moneda=data.get('moneda', 'PES'),
-        cotizacion=data.get('cotizacion', 1),
+        moneda='PES',
+        cotizacion=Decimal('1'),
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
@@ -431,6 +424,12 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
     )
     db.session.add(factura)
     db.session.flush()
+
+    # Marcar con error de validación si el parser lo detectó
+    validation_error = data.get('_validation_error')
+    if validation_error:
+        factura.estado = 'error'
+        factura.error_mensaje = validation_error
 
     # Crear items si existen
     if data.get('items'):
