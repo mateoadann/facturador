@@ -9,9 +9,9 @@ from app.models import Lote, Factura, Receptor
 
 class TestImportCSV:
     def test_import_success(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00
-{receptor.doc_nro},1,1,2026-01-16,24200.00,20000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00
+{receptor.doc_nro},1,1,2026-01-16,24200.00,20000.00,4200.00,Servicio B,1,20000.00"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas.csv'),
@@ -56,8 +56,8 @@ class TestImportCSV:
         assert 'Columnas requeridas faltantes' in str(response.get_json())
 
     def test_import_nonexistent_facturador(self, client, auth_headers, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio,1,10000.00"""
 
         fake_uuid = str(uuid.uuid4())
         data = {
@@ -72,14 +72,14 @@ class TestImportCSV:
             data=data,
             content_type='multipart/form-data'
         )
-        assert response.status_code == 404
+        assert response.status_code == 400
         result = response.get_json()
         assert 'error' in result
 
     def test_import_auto_creates_receptor(self, client, auth_headers, facturador):
         """Si el receptor no existe, se crea automáticamente."""
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30999888777,1,1,2026-01-15,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30999888777,1,1,2026-01-15,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas.csv'),
@@ -97,8 +97,8 @@ class TestImportCSV:
         assert response.get_json()['facturas_importadas'] == 1
 
     def test_import_tipo_c_normalizes_iva_to_zero(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva
-{receptor.doc_nro},11,1,2026-01-15,12100.00,10000.00,2100.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},11,1,2026-01-15,12100.00,10000.00,2100.00,Servicio C,1,10000.00"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas-c.csv'),
@@ -129,8 +129,8 @@ class TestListFacturas:
 
     def test_list_with_filters(self, client, auth_headers, facturador, receptor):
         # First import some data
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio filtro,1,10000.00"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
@@ -155,8 +155,8 @@ class TestListFacturas:
         assert len(response.get_json()['items']) == 0
 
     def test_list_with_multiple_estados_filter(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio estados,1,10000.00"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
@@ -185,8 +185,8 @@ class TestListFacturas:
         assert 'Estados inválidos' in response.get_json()['error']
 
     def test_list_with_lote_ids_filter(self, client, auth_headers, facturador, receptor):
-        csv_1 = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        csv_1 = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio lote A,1,10000.00"""
         import_1 = client.post(
             '/api/facturas/import',
             headers=auth_headers,
@@ -195,8 +195,8 @@ class TestListFacturas:
         )
         lote_1_id = import_1.get_json()['lote']['id']
 
-        csv_2 = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},6,1,2026-01-16,24200.00,20000.00"""
+        csv_2 = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},6,1,2026-01-16,24200.00,20000.00,4200.00,Servicio lote B,1,20000.00"""
         client.post(
             '/api/facturas/import',
             headers=auth_headers,
@@ -221,9 +221,9 @@ class TestListFacturas:
         db.session.add(receptor_2)
         db.session.commit()
 
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00
-{receptor_2.doc_nro},6,1,2026-01-16,24200.00,20000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio R1,1,10000.00
+{receptor_2.doc_nro},6,1,2026-01-16,24200.00,20000.00,4200.00,Servicio R2,1,20000.00"""
 
         client.post(
             '/api/facturas/import',
@@ -259,9 +259,9 @@ class TestListFacturas:
 class TestBulkDeleteFacturas:
     def test_bulk_delete(self, client, auth_headers, facturador, receptor):
         # Import first
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45
-{receptor.doc_nro},1,1,2026-01-16,2000.00,1652.89"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio delete 1,1,826.45
+{receptor.doc_nro},1,1,2026-01-16,2000.00,1652.89,347.11,Servicio delete 2,1,1652.89"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
@@ -290,8 +290,8 @@ class TestBulkDeleteFacturas:
         assert response.status_code == 400
 
     def test_bulk_delete_removes_empty_lote(self, client, auth_headers, facturador, receptor):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio lote borrar,1,826.45"""
 
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'test.csv'),
@@ -322,8 +322,8 @@ class TestBulkDeleteFacturas:
 
     def test_can_reuse_label_after_lote_is_emptied(self, client, auth_headers, facturador, receptor):
         etiqueta = 'Etiqueta reutilizable'
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,1000.00,826.45,173.55,Servicio etiqueta,1,826.45"""
 
         first_import = client.post(
             '/api/facturas/import',
@@ -361,8 +361,8 @@ class TestBulkDeleteFacturas:
 
 class TestUpdateFactura:
     def _create_factura(self, client, auth_headers, facturador, receptor, etiqueta='Test editar factura'):
-        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00"""
+        csv_content = f"""receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+{receptor.doc_nro},1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio editar,1,10000.00"""
         data = {
             'file': (io.BytesIO(csv_content.encode('utf-8')), 'facturas.csv'),
             'etiqueta': etiqueta,

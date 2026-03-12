@@ -6,9 +6,9 @@ from app.services.csv_parser import parse_csv, clean_cuit, parse_date, parse_dec
 
 class TestParseCSV:
     def test_parse_valid_csv(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30-11111111-1,1,1,2026-01-15,12100.00,10000.00
-30-22222222-2,1,1,2026-01-16,24200.00,20000.00"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30-11111111-1,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00
+30-22222222-2,1,1,2026-01-16,24200.00,20000.00,4200.00,Servicio B,1,20000.00"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 2
@@ -29,14 +29,14 @@ class TestParseCSV:
         assert 'Columnas requeridas faltantes' in errors[0]
 
     def test_parse_csv_with_optional_columns(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda
-30111111111,1,2,2026-01-15,12100.00,10000.00,2100.00,PES"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,moneda,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,2,2026-01-15,12100.00,10000.00,2100.00,PES,Servicio mensual,1,10000.00"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 1
         assert len(errors) == 0
         assert facturas[0]['importe_iva'] == Decimal('2100.00')
-        assert facturas[0]['moneda'] == 'PES'
+        assert 'moneda' not in facturas[0]
 
     def test_parse_csv_with_items(self):
         csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
@@ -53,9 +53,9 @@ class TestParseCSV:
         assert facturas[0]['importe_total'] == Decimal('12100.00')
 
     def test_parse_csv_with_items_no_iva(self):
-        """CSV sin importe_iva marca la factura como sin IVA discriminado."""
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,item_descripcion,item_cantidad,item_precio_unitario
-30111111111,1,1,2026-01-15,12100.00,10000.00,Servicio web,1,10000.00"""
+        """CSV con importe_iva=0 marca la factura como sin IVA discriminado."""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,1,2026-01-15,10000.00,10000.00,0,Servicio web,1,10000.00"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 1
@@ -83,10 +83,10 @@ class TestParseCSV:
 
     def test_parse_csv_groups_repeated_totals_no_iva(self):
         """Cuando no viene importe_iva, marca como sin IVA."""
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,item_descripcion,item_cantidad,item_precio_unitario
-30111111111,1,1,2026-01-15,100.00,100.00,Servicio mensual,1,100.00
-30111111111,1,1,2026-01-15,100.00,100.00,Sueldos,1,100.00
-30111111111,1,1,2026-01-15,100.00,100.00,Honorarios,1,100.00"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,1,2026-01-15,100.00,100.00,0,Servicio mensual,1,100.00
+30111111111,1,1,2026-01-15,100.00,100.00,0,Sueldos,1,100.00
+30111111111,1,1,2026-01-15,100.00,100.00,0,Honorarios,1,100.00"""
 
         facturas, errors = parse_csv(csv_content)
 
@@ -99,8 +99,8 @@ class TestParseCSV:
         assert len(facturas[0]['items']) == 3
 
     def test_parse_csv_invalid_row(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30111111111,abc,1,2026-01-15,12100.00,10000.00"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,abc,1,2026-01-15,12100.00,10000.00,2100.00,Servicio web,1,10000.00"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 0
@@ -108,8 +108,8 @@ class TestParseCSV:
         assert 'Fila 2' in errors[0]
 
     def test_parse_csv_with_nota_credito(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,cbte_asoc_tipo,cbte_asoc_pto_vta,cbte_asoc_nro
-30111111111,3,1,2026-01-20,5000.00,4132.23,1,1,100"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,cbte_asoc_tipo,cbte_asoc_pto_vta,cbte_asoc_nro,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,3,1,2026-01-20,5000.00,4132.23,867.77,1,1,100,Nota credito,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 1
@@ -118,8 +118,8 @@ class TestParseCSV:
         assert facturas[0]['cbte_asoc_nro'] == 100
 
     def test_parse_csv_concepto_2_defaults_service_dates_to_emision(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30111111111,1,2,2026-01-20,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,2,2026-01-20,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -129,8 +129,8 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
 
     def test_parse_csv_concepto_3_defaults_service_dates_to_emision(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30111111111,1,3,2026-01-20,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,3,2026-01-20,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -140,8 +140,8 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
 
     def test_parse_csv_concepto_2_with_service_dates(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,fecha_hasta,fecha_vto_pago,importe_total,importe_neto
-30111111111,1,2,2026-01-20,2026-01-01,2026-01-31,2026-02-10,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,fecha_hasta,fecha_vto_pago,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,2,2026-01-20,2026-01-01,2026-01-31,2026-02-10,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -151,8 +151,8 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 2, 10)
 
     def test_parse_csv_concepto_1_defaults_service_dates_to_emision(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto
-30111111111,1,1,2026-01-20,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,1,2026-01-20,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -162,8 +162,8 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
 
     def test_parse_csv_concepto_1_defaults_only_missing_service_dates(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto
-30111111111,1,1,2026-01-20,2026-01-15,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,1,2026-01-20,2026-01-15,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -173,8 +173,8 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
 
     def test_parse_csv_concepto_2_defaults_only_missing_service_dates(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto
-30111111111,1,2,2026-01-20,2026-01-10,5000.00,4132.23"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,fecha_desde,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,1,2,2026-01-20,2026-01-10,5000.00,4132.23,867.77,Servicio,1,4132.23"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(errors) == 0
@@ -184,7 +184,7 @@ class TestParseCSV:
         assert facturas[0]['fecha_vto_pago'] == date(2026, 1, 20)
 
     def test_parse_empty_csv(self):
-        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto"""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 0
