@@ -161,8 +161,10 @@ function Sidebar() {
                     {item.group === 'CONFIGURACIÓN' && (
                       <button
                         onClick={toggleDarkMode}
+                        role="switch"
+                        aria-checked={darkMode}
                         className={cn(
-                          'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-secondary',
+                          'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
                           isCollapsed && 'justify-center px-0'
                         )}
                         title={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
@@ -175,14 +177,17 @@ function Sidebar() {
                         {!isCollapsed && (
                           <>
                             <span className="flex-1 text-left">Modo oscuro</span>
-                            <span className="relative h-6 w-11 rounded-full bg-secondary">
+                            <span
+                              className={cn(
+                                'relative h-6 w-11 rounded-full transition-colors',
+                                darkMode
+                                  ? 'bg-primary'
+                                  : 'bg-border'
+                              )}
+                            >
                               <span
-                                className={cn(
-                                  'absolute top-0.5 h-5 w-5 rounded-full transition-transform',
-                                  darkMode
-                                    ? 'translate-x-[22px] bg-primary'
-                                    : 'translate-x-0.5 bg-text-muted'
-                                )}
+                                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                                style={{ transform: darkMode ? 'translateX(20px)' : 'translateX(0)' }}
                               />
                             </span>
                           </>
