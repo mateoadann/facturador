@@ -186,12 +186,8 @@ function Sidebar() {
                               )}
                             >
                               <span
-                                className={cn(
-                                  'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform',
-                                  darkMode
-                                    ? 'translate-x-[22px]'
-                                    : 'translate-x-0.5'
-                                )}
+                                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                                style={{ transform: darkMode ? 'translateX(20px)' : 'translateX(0)' }}
                               />
                             </span>
                           </>
