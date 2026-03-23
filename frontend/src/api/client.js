@@ -22,6 +22,21 @@ client.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+// Token refresh state - prevents concurrent refresh attempts
+let isRefreshing = false
+let failedQueue = []
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
 // Response interceptor - handle token refresh
 client.interceptors.response.use(
   (response) => response,
@@ -30,11 +45,25 @@ client.interceptors.response.use(
 
     // If 401 and not already retrying, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // If already refreshing, queue this request to retry after refresh completes
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return client(originalRequest)
+        }).catch((err) => {
+          return Promise.reject(err)
+        })
+      }
+
       originalRequest._retry = true
 
       const refreshToken = useAuthStore.getState().refreshToken
 
       if (refreshToken) {
+        isRefreshing = true
+
         try {
           const response = await axios.post(`${API_URL}/api/auth/refresh`, null, {
             headers: {
@@ -45,16 +74,19 @@ client.interceptors.response.use(
           const { access_token } = response.data
           useAuthStore.getState().setAccessToken(access_token)
 
+          processQueue(null, access_token)
+
           originalRequest.headers.Authorization = `Bearer ${access_token}`
           return client(originalRequest)
         } catch (refreshError) {
+          processQueue(refreshError, null)
           useAuthStore.getState().logout()
-          window.location.href = '/login'
           return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
         }
       } else {
         useAuthStore.getState().logout()
-        window.location.href = '/login'
       }
     }
 

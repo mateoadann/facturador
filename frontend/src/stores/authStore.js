@@ -8,7 +8,6 @@ export const useAuthStore = create(
       tenant: null,
       accessToken: null,
       refreshToken: null,
-
       setAuth: ({ user, tenant, access_token, refresh_token }) => {
         set({
           user,
