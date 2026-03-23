@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_PREVIEW_SAMPLE_DATA = {
     'facturador': 'Empresa Demo SRL',
     'receptor': 'Cliente Ejemplo SA',
-    'comprobante': '00001-00001234',
+    'comprobante': 'Factura A 00001-00001234',
 }
 
 
@@ -127,11 +127,14 @@ def send_comprobante_email(factura):
     filename = build_comprobante_pdf_filename(factura)
 
     # Construir asunto y body usando config personalizable
+    from arca_integration.constants import TIPOS_COMPROBANTE
+
     facturador_nombre = factura.facturador.razon_social if factura.facturador else 'Facturador'
-    comprobante_str = f'{punto_venta:05d}-{numero:08d}'
+    tipo_nombre = TIPOS_COMPROBANTE.get(factura.tipo_comprobante, 'Comprobante')
+    comprobante_str = f'{tipo_nombre} {punto_venta:05d}-{numero:08d}'
 
     subject = _build_subject(config, comprobante_str, facturador_nombre)
-    body_html = _build_comprobante_email_body(factura, facturador_nombre, config)
+    body_html = _build_comprobante_email_body(factura, facturador_nombre, config, comprobante_str)
 
     send_email(
         config=config,
@@ -160,6 +163,7 @@ def send_test_email(config, to_email):
 
 
 def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None,
+                        email_despedida=None, email_firma=None,
                         from_name=None, sample_data=None):
     """Construye una vista previa del email usando la misma logica de produccion."""
     normalized_sample_data = dict(DEFAULT_PREVIEW_SAMPLE_DATA)
@@ -170,6 +174,8 @@ def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None
         email_asunto=(email_asunto or '').strip() or None,
         email_mensaje=(email_mensaje or '').strip() or None,
         email_saludo=(email_saludo or '').strip() or None,
+        email_despedida=(email_despedida or '').strip() or None,
+        email_firma=(email_firma or '').strip() or None,
     )
 
     subject = _build_subject(
@@ -180,6 +186,7 @@ def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None
     html = _build_comprobante_email_body_from_data(
         receptor_nombre=normalized_sample_data['receptor'],
         facturador_nombre=normalized_sample_data['facturador'],
+        comprobante_str=normalized_sample_data['comprobante'],
         config=config,
     )
 
@@ -204,44 +211,64 @@ def _build_subject(config, comprobante_str, facturador_nombre):
     return f'Comprobante {comprobante_str} - {facturador_nombre}'
 
 
-def _build_comprobante_email_body(factura, facturador_nombre, config):
+def _build_comprobante_email_body(factura, facturador_nombre, config, comprobante_str=''):
     """Construye el HTML del cuerpo del email de comprobante."""
     receptor_nombre = factura.receptor.razon_social if factura.receptor else ''
 
     return _build_comprobante_email_body_from_data(
         receptor_nombre=receptor_nombre,
         facturador_nombre=facturador_nombre,
+        comprobante_str=comprobante_str,
         config=config,
     )
 
 
-def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, config):
+def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, config,
+                                             comprobante_str=''):
     """Construye el HTML del cuerpo del email de comprobante."""
 
+    # Saludo (greeting) with variable interpolation
+    saludo_raw = config.email_saludo if config.email_saludo else 'Estimado/a {receptor},'
+    saludo = (
+        saludo_raw
+        .replace('{receptor}', receptor_nombre)
+        .replace('{facturador}', facturador_nombre)
+        .replace('{comprobante}', comprobante_str)
+    )
+
+    # Mensaje principal
     mensaje = config.email_mensaje if config.email_mensaje else (
         'Adjunto encontrará el comprobante electrónico correspondiente.'
     )
     # Convertir saltos de línea a <br> para HTML
     mensaje_html = mensaje.replace('\n', '<br>')
 
-    saludo = config.email_saludo if config.email_saludo else 'Saludos cordiales'
+    # Despedida (farewell)
+    despedida = config.email_despedida if config.email_despedida else 'Saludos cordiales'
+
+    # Firma (signature)
+    firma = config.email_firma if config.email_firma else None
+
+    # Build HTML sections
+    sections = []
+    sections.append(f'<p>{saludo}</p>')
+    sections.append(f'<p>{mensaje_html}</p>')
+    sections.append(f'<p>{despedida}</p>')
+
+    if firma:
+        firma_html = firma.replace('\n', '<br>')
+        sections.append(f'<p style="color: #475569;">{firma_html}</p>')
+
+    body_content = '\n        '.join(sections)
 
     return f"""
     <html>
     <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0 auto;">
-        <div style="border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 20px;">
-            <h2 style="margin: 0; color: #2563eb;">{facturador_nombre}</h2>
-        </div>
-
-        <p>Estimado/a <strong>{receptor_nombre}</strong>,</p>
-
-        <p>{mensaje_html}</p>
-
-        <p>{saludo}</p>
+        {body_content}
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
         <p style="color: #94a3b8; font-size: 11px;">
-            Enviado automáticamente por Facturador - Sistema de facturación electrónica
+            Enviado automáticamente por <a href="https://adain.dev" style="color: #94a3b8; text-decoration: underline;">AD&#923;IN AI Solutions</a>
         </p>
     </body>
     </html>
