@@ -114,7 +114,7 @@ function Sidebar() {
           <img
             src="/factura.png"
             alt="Facturador"
-            className="h-10 w-10 rounded-lg object-cover"
+            className="h-10 w-10 rounded-lg object-cover dark:brightness-0 dark:invert dark:opacity-60"
           />
           {!isCollapsed && (
             <>
