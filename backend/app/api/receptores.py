@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 import csv
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from ..extensions import db
 from ..models import Receptor, Facturador, Factura
 from ..services.encryption import decrypt_certificate
@@ -245,18 +246,25 @@ def import_receptores():
     procesados = len(rows) + len(errors)
     omitidos = len(errors)
 
-    db.session.flush()
-    log_action(
-        'receptor:importar',
-        recurso='receptor',
-        detalle={
-            'procesados': procesados,
-            'creados': creados,
-            'actualizados': actualizados,
-            'omitidos': omitidos
-        }
-    )
-    db.session.commit()
+    try:
+        db.session.flush()
+        log_action(
+            'receptor:importar',
+            recurso='receptor',
+            detalle={
+                'procesados': procesados,
+                'creados': creados,
+                'actualizados': actualizados,
+                'omitidos': omitidos
+            }
+        )
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Error de integridad en los datos: posible CUIT duplicado o dato inválido'}), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({'error': 'Error al guardar los receptores en la base de datos'}), 500
 
     return jsonify({
         'procesados': procesados,
