@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { Button, Checkbox, Input, Select } from '@/components/ui'
+import { Button, Checkbox, DatePicker, Input, Select } from '@/components/ui'
 
 const TIPOS_COMPROBANTE_OPTIONS = [
   { value: 1, label: 'Factura A (1)' },
@@ -196,17 +196,17 @@ function FacturasFiltersSidebar({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Input
+            <DatePicker
               label="Fecha desde"
-              type="date"
               value={draft.fecha_desde}
-              onChange={(e) => setDraft({ ...draft, fecha_desde: e.target.value })}
+              onChange={(v) => setDraft({ ...draft, fecha_desde: v })}
+              position="top left"
             />
-            <Input
+            <DatePicker
               label="Fecha hasta"
-              type="date"
               value={draft.fecha_hasta}
-              onChange={(e) => setDraft({ ...draft, fecha_hasta: e.target.value })}
+              onChange={(v) => setDraft({ ...draft, fecha_hasta: v })}
+              position="top left"
             />
           </div>
         </div>

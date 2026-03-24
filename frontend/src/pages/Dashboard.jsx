@@ -5,7 +5,7 @@ import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
 import {
   Button,
-  Input,
+  DatePicker,
   MetricCard,
   Table,
   TableBody,
@@ -85,13 +85,13 @@ function Dashboard() {
 
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-full sm:w-auto sm:min-w-[220px]">
-                <Input
-                  type="month"
+                <DatePicker
+                  mode="month"
                   label="Mes de analisis"
                   value={selectedMonth}
                   disabled={historico}
                   max={getCurrentMonthValue()}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  onChange={(v) => setSelectedMonth(v)}
                 />
               </div>
               <Button
