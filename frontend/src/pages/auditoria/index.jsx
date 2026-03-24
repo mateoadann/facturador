@@ -9,6 +9,7 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  DatePicker,
   Input,
   Button,
 } from '@/components/ui'
@@ -91,18 +92,16 @@ function Auditoria() {
           onChange={(e) => setFilters({ ...filters, accion: e.target.value })}
           className="w-48"
         />
-        <Input
+        <DatePicker
           label="Desde"
-          type="date"
           value={filters.fecha_desde}
-          onChange={(e) => setFilters({ ...filters, fecha_desde: e.target.value })}
+          onChange={(v) => setFilters({ ...filters, fecha_desde: v })}
           className="w-40"
         />
-        <Input
+        <DatePicker
           label="Hasta"
-          type="date"
           value={filters.fecha_hasta}
-          onChange={(e) => setFilters({ ...filters, fecha_hasta: e.target.value })}
+          onChange={(v) => setFilters({ ...filters, fecha_hasta: v })}
           className="w-40"
         />
         <div className="flex gap-2">

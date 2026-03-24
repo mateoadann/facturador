@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
-import { Button, Input, Modal, Select } from '@/components/ui'
+import { Button, DatePicker, Input, Modal, Select } from '@/components/ui'
 import { formatCUIT, formatComprobante } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { toast } from '@/stores/toastStore'
@@ -294,10 +294,10 @@ function ItemsModal({ factura, onClose, onSaved }) {
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-          <Input label="Fecha emisión" type="date" value={formData.fecha_emision} onChange={(e) => updateField('fecha_emision', e.target.value)} disabled={!canSave} />
-          <Input label="Fecha desde" type="date" value={formData.fecha_desde} onChange={(e) => updateField('fecha_desde', e.target.value)} disabled={!canSave} />
-          <Input label="Fecha hasta" type="date" value={formData.fecha_hasta} onChange={(e) => updateField('fecha_hasta', e.target.value)} disabled={!canSave} />
-          <Input label="Vto pago" type="date" value={formData.fecha_vto_pago} onChange={(e) => updateField('fecha_vto_pago', e.target.value)} disabled={!canSave} />
+          <DatePicker label="Fecha emisión" value={formData.fecha_emision} onChange={(v) => updateField('fecha_emision', v)} disabled={!canSave} />
+          <DatePicker label="Fecha desde" value={formData.fecha_desde} onChange={(v) => updateField('fecha_desde', v)} disabled={!canSave} />
+          <DatePicker label="Fecha hasta" value={formData.fecha_hasta} onChange={(v) => updateField('fecha_hasta', v)} disabled={!canSave} />
+          <DatePicker label="Vto pago" value={formData.fecha_vto_pago} onChange={(v) => updateField('fecha_vto_pago', v)} disabled={!canSave} />
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

@@ -14,6 +14,7 @@ import {
   TableHead,
   TableCell,
   Modal,
+  DatePicker,
   Input,
   Select,
 } from '@/components/ui'
@@ -378,12 +379,10 @@ function Facturadores() {
               required
             />
 
-            <Input
+            <DatePicker
               label="Fecha de Inicio de Actividades"
-              type="date"
               value={formData.fecha_inicio_actividades}
-              onChange={(e) => setFormData({ ...formData, fecha_inicio_actividades: e.target.value })}
-              required
+              onChange={(v) => setFormData({ ...formData, fecha_inicio_actividades: v })}
             />
           </div>
 
