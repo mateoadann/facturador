@@ -158,7 +158,7 @@ export const api = {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
     bulkDelete: (ids) => client.delete('/facturas', { data: { ids } }),
-    sendEmail: (id) => client.post(`/facturas/${id}/enviar-email`),
+    sendEmail: (id, data) => client.post(`/facturas/${id}/enviar-email`, data),
   },
 
   // Lotes

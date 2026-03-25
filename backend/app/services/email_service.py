@@ -1,3 +1,4 @@
+import html
 import smtplib
 import logging
 from types import SimpleNamespace
@@ -87,14 +88,18 @@ def send_email(config, to_email, subject, html_body, attachments=None):
         server.quit()
 
 
-def send_comprobante_email(factura):
+def send_comprobante_email(factura, custom_asunto=None, custom_body=None,
+                           destinatarios=None):
     """Envía el comprobante PDF de una factura autorizada al receptor.
 
     Args:
         factura: Factura con estado 'autorizado' y receptor con email
+        custom_asunto: Asunto personalizado (opcional, para reenvíos)
+        custom_body: Cuerpo en texto plano personalizado (opcional, para reenvíos)
+        destinatarios: Lista de emails destino (opcional, si no se usa receptor.email)
 
     Raises:
-        ValueError: Si la factura no está autorizada o el receptor no tiene email
+        ValueError: Si la factura no está autorizada o no hay destinatario
         Exception: Si falla la generación de PDF o el envío SMTP
     """
     from ..models import EmailConfig
@@ -103,7 +108,7 @@ def send_comprobante_email(factura):
         raise ValueError('Solo se pueden enviar comprobantes de facturas autorizadas')
 
     receptor = factura.receptor
-    if not receptor or not receptor.email:
+    if not destinatarios and (not receptor or not receptor.email):
         raise ValueError('El receptor no tiene email configurado')
 
     config = EmailConfig.query.filter_by(
@@ -118,31 +123,40 @@ def send_comprobante_email(factura):
     from .comprobante_renderer import render_comprobante_html
     from .comprobante_pdf import html_to_pdf_bytes
 
-    html = render_comprobante_html(factura)
-    pdf_bytes = html_to_pdf_bytes(html)
+    comprobante_html = render_comprobante_html(factura)
+    pdf_bytes = html_to_pdf_bytes(comprobante_html)
 
     # Construir nombre del archivo
     punto_venta = int(factura.punto_venta or 0)
     numero = int(factura.numero_comprobante or 0)
     filename = build_comprobante_pdf_filename(factura)
 
-    # Construir asunto y body usando config personalizable
+    # Construir asunto y body
     from arca_integration.constants import TIPOS_COMPROBANTE
 
     facturador_nombre = factura.facturador.razon_social if factura.facturador else 'Facturador'
     tipo_nombre = TIPOS_COMPROBANTE.get(factura.tipo_comprobante, 'Comprobante')
     comprobante_str = f'{tipo_nombre} {punto_venta:05d}-{numero:08d}'
 
-    subject = _build_subject(config, comprobante_str, facturador_nombre)
-    body_html = _build_comprobante_email_body(factura, facturador_nombre, config, comprobante_str)
+    if custom_asunto:
+        subject = custom_asunto
+    else:
+        subject = _build_subject(config, comprobante_str, facturador_nombre)
 
-    send_email(
-        config=config,
-        to_email=receptor.email,
-        subject=subject,
-        html_body=body_html,
-        attachments=[(filename, pdf_bytes, 'application/pdf')],
-    )
+    if custom_body:
+        body_html = _build_custom_body_html(custom_body)
+    else:
+        body_html = _build_comprobante_email_body(factura, facturador_nombre, config, comprobante_str)
+
+    target_emails = destinatarios or [receptor.email]
+    for to_email in target_emails:
+        send_email(
+            config=config,
+            to_email=to_email,
+            subject=subject,
+            html_body=body_html,
+            attachments=[(filename, pdf_bytes, 'application/pdf')],
+        )
 
 
 def send_test_email(config, to_email):
@@ -198,6 +212,25 @@ def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None
             'from_name': (from_name or '').strip() or None,
         },
     }
+
+
+def _build_custom_body_html(custom_body):
+    """Construye HTML del email a partir de texto plano custom (para reenvíos)."""
+    escaped = html.escape(custom_body)
+    body_content = escaped.replace('\n', '<br>')
+
+    return f"""
+    <html>
+    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0 auto;">
+        <p>{body_content}</p>
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="color: #94a3b8; font-size: 11px;">
+            Enviado automáticamente por <a href="https://adain.dev" style="color: #94a3b8; text-decoration: underline;">AD&#923;IN AI Solutions</a>
+        </p>
+    </body>
+    </html>
+    """
 
 
 def _build_subject(config, comprobante_str, facturador_nombre):
