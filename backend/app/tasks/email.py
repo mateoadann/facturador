@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
-def enviar_factura_email(self, factura_id: str, tenant_id: str):
+def enviar_factura_email(self, factura_id: str, tenant_id: str,
+                         custom_asunto=None, custom_body=None,
+                         destinatarios=None):
     """Envía el comprobante PDF por email al receptor de forma async."""
     factura = Factura.query.filter_by(id=factura_id, tenant_id=tenant_id).first()
     if not factura:
@@ -20,8 +22,17 @@ def enviar_factura_email(self, factura_id: str, tenant_id: str):
         logger.info(f'Factura {factura_id} no autorizada, omitiendo email')
         return {'skipped': True, 'reason': 'No autorizada'}
 
+    has_custom = bool(custom_asunto or custom_body or destinatarios)
+
     try:
-        return _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=True)
+        return _enviar_factura_email_sync(
+            factura,
+            allow_resend=has_custom,
+            raise_on_error=True,
+            custom_asunto=custom_asunto,
+            custom_body=custom_body,
+            destinatarios=destinatarios,
+        )
 
     except (
         smtplib.SMTPException,
@@ -119,12 +130,15 @@ def enviar_emails_lote(self, lote_id: str, tenant_id: str, mode: str = 'no_envia
     }
 
 
-def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False):
+def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False,
+                                custom_asunto=None, custom_body=None,
+                                destinatarios=None):
     if factura.email_enviado and not allow_resend:
         logger.info(f'Factura {factura.id} ya tiene email enviado, omitiendo')
         return {'skipped': True, 'reason': 'Ya enviado'}
 
-    if not factura.receptor or not factura.receptor.email:
+    # Si hay destinatarios custom, no necesita email del receptor
+    if not destinatarios and (not factura.receptor or not factura.receptor.email):
         logger.info(f'Factura {factura.id} sin email de receptor, omitiendo')
         return {'skipped': True, 'reason': 'Sin email de receptor'}
 
@@ -139,15 +153,21 @@ def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False
 
     try:
         from ..services.email_service import send_comprobante_email
-        send_comprobante_email(factura)
+        send_comprobante_email(
+            factura,
+            custom_asunto=custom_asunto,
+            custom_body=custom_body,
+            destinatarios=destinatarios,
+        )
 
         factura.email_enviado = True
         factura.email_enviado_at = datetime.utcnow()
         factura.email_error = None
         db.session.commit()
 
-        logger.info(f'Email enviado para factura {factura.id} a {factura.receptor.email}')
-        return {'success': True, 'email': factura.receptor.email}
+        target = destinatarios or [factura.receptor.email]
+        logger.info(f'Email enviado para factura {factura.id} a {target}')
+        return {'success': True, 'email': target}
     except (
         smtplib.SMTPException,
         ConnectionError,

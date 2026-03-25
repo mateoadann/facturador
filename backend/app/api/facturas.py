@@ -708,8 +708,23 @@ def enviar_email(factura_id):
     if factura.estado != 'autorizado':
         return jsonify({'error': 'Solo se pueden enviar comprobantes de facturas autorizadas'}), 400
 
-    if not factura.receptor or not factura.receptor.email:
-        return jsonify({'error': 'El receptor no tiene email configurado'}), 400
+    # Leer contenido custom opcional (para reenvíos con contenido editado)
+    body = request.get_json(silent=True) or {}
+    custom_asunto = body.get('custom_asunto')
+    custom_body = body.get('custom_body')
+    destinatarios = body.get('destinatarios')  # lista de emails custom
+
+    # Si no hay destinatarios custom, usar el del receptor
+    if not destinatarios:
+        if not factura.receptor or not factura.receptor.email:
+            return jsonify({'error': 'El receptor no tiene email configurado'}), 400
+    else:
+        # Validar que todos los destinatarios sean emails válidos
+        import re
+        email_re = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+        invalid = [e for e in destinatarios if not email_re.match(e)]
+        if invalid:
+            return jsonify({'error': f'Emails inválidos: {", ".join(invalid)}'}), 400
 
     config = EmailConfig.query.filter_by(
         tenant_id=g.tenant_id,
@@ -720,15 +735,23 @@ def enviar_email(factura_id):
         return jsonify({'error': 'No hay configuración de email habilitada'}), 400
 
     from ..tasks.email import enviar_factura_email
-    enviar_factura_email.delay(str(factura.id), str(g.tenant_id))
+    kwargs = {}
+    if custom_asunto or custom_body:
+        kwargs['custom_asunto'] = custom_asunto
+        kwargs['custom_body'] = custom_body
+    if destinatarios:
+        kwargs['destinatarios'] = destinatarios
+    enviar_factura_email.delay(str(factura.id), str(g.tenant_id), **kwargs)
 
+    target_emails = destinatarios or [factura.receptor.email]
     log_action('email:enviar', recurso='factura', recurso_id=factura.id,
-               detalle={'receptor_email': factura.receptor.email})
+               detalle={'receptor_email': target_emails,
+                        'reenvio': bool(custom_asunto or custom_body)})
     db.session.commit()
 
     return jsonify({
         'message': 'Email en proceso de envío',
-        'receptor_email': factura.receptor.email,
+        'receptor_email': target_emails,
     }), 202
 
 

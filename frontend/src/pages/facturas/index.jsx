@@ -21,6 +21,7 @@ import { toast } from '@/stores/toastStore'
 import { useDownloadsStore } from '@/stores/downloadsStore'
 import BulkEmailModal from './BulkEmailModal'
 import BulkPdfDownloadModal from './BulkPdfDownloadModal'
+import EmailResendModal from './EmailResendModal'
 import FacturasFiltersSidebar from './FacturasFiltersSidebar'
 import FacturaViewModal from './FacturaViewModal'
 
@@ -71,6 +72,7 @@ function Facturas() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [emailTaskId, setEmailTaskId] = useState(null)
   const [selectedFacturaId, setSelectedFacturaId] = useState(null)
+  const [resendModal, setResendModal] = useState({ isOpen: false, factura: null })
   const canSendEmail = usePermission('email:enviar')
   const canDownloadComprobante = usePermission('facturas:comprobante')
   const addZipTask = useDownloadsStore((s) => s.addZipTask)
@@ -262,14 +264,20 @@ function Facturas() {
     return <Badge variant={variants[estado]}>{labels[estado]}</Badge>
   }
 
-  const handleSendEmail = async (factura) => {
+  const handleSendEmail = async (factura, customData) => {
     if (!canSendEmail) {
+      return
+    }
+
+    // Si ya fue enviado y no hay customData, abrir modal de reenvío
+    if (factura.email_enviado && !customData) {
+      setResendModal({ isOpen: true, factura })
       return
     }
 
     setSendingEmailId(factura.id)
     try {
-      await api.facturas.sendEmail(factura.id)
+      await api.facturas.sendEmail(factura.id, customData || undefined)
       queryClient.invalidateQueries(['facturas'])
       queryClient.invalidateQueries(['lotes'])
       toast.success('Email enviado', `Comprobante enviado a ${factura.receptor?.email || 'el receptor'}`)
@@ -278,6 +286,12 @@ function Facturas() {
     } finally {
       setSendingEmailId(null)
     }
+  }
+
+  const handleResendConfirm = async (customData) => {
+    const factura = resendModal.factura
+    setResendModal({ isOpen: false, factura: null })
+    await handleSendEmail(factura, customData)
   }
 
   const handleDownloadPdf = async (factura) => {
@@ -533,6 +547,13 @@ function Facturas() {
         facturadores={facturadores}
         lotes={lotesFiltros}
         receptores={receptores}
+      />
+
+      <EmailResendModal
+        isOpen={resendModal.isOpen}
+        onClose={() => setResendModal({ isOpen: false, factura: null })}
+        factura={resendModal.factura}
+        onConfirm={handleResendConfirm}
       />
 
       <FacturaViewModal
