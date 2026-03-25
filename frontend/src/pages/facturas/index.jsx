@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Download, Eye, Loader2, Mail, MailX, Send, SlidersHorizontal } from 'lucide-react'
 import { api } from '@/api/client'
@@ -162,6 +162,14 @@ function Facturas() {
     enabled: !!loteProcesando?.celery_task_id,
     refetchInterval: 2000,
   })
+
+  // Refresh table as facturas get processed during billing
+  const billingProgress = facturacionJobStatus?.progress?.current
+  useEffect(() => {
+    if (loteProcesando && billingProgress != null) {
+      queryClient.invalidateQueries(['facturas'])
+    }
+  }, [loteProcesando, billingProgress, queryClient])
 
   const sendLoteEmailsMutation = useMutation({
     mutationFn: ({ loteId, mode }) => api.lotes.sendEmails(loteId, { mode }),
@@ -340,6 +348,11 @@ function Facturas() {
         toast.error('Error al enviar emails', emailJobStatus.error || 'Fallo la tarea de envio masivo')
       }
     }
+  }
+
+  if (facturacionJobStatus?.status === 'SUCCESS' || facturacionJobStatus?.status === 'FAILURE') {
+    queryClient.invalidateQueries(['facturas'])
+    queryClient.invalidateQueries(['lotes'])
   }
 
   return (

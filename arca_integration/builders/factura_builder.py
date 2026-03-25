@@ -144,9 +144,9 @@ class FacturaBuilder:
             raise ArcaValidationError('Concepto es requerido')
         if not self._fecha_emision:
             raise ArcaValidationError('Fecha de emisión es requerida')
-        if not self._doc_tipo:
+        if self._doc_tipo is None:
             raise ArcaValidationError('Tipo de documento del receptor es requerido')
-        if not self._doc_nro:
+        if self._doc_nro is None:
             raise ArcaValidationError('Número de documento del receptor es requerido')
         if self._importe_total is None:
             raise ArcaValidationError('Importe total es requerido')
