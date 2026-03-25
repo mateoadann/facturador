@@ -245,6 +245,7 @@ def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, 
 
     # Despedida (farewell)
     despedida = config.email_despedida if config.email_despedida else 'Saludos cordiales'
+    despedida_html = despedida.replace('\n', '<br>')
 
     # Firma (signature)
     firma = config.email_firma if config.email_firma else None
@@ -253,7 +254,7 @@ def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, 
     sections = []
     sections.append(f'<p>{saludo}</p>')
     sections.append(f'<p>{mensaje_html}</p>')
-    sections.append(f'<p>{despedida}</p>')
+    sections.append(f'<p>{despedida_html}</p>')
 
     if firma:
         firma_html = firma.replace('\n', '<br>')
