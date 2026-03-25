@@ -43,15 +43,20 @@ function Facturar() {
   })
 
   // Fetch facturas del lote seleccionado
+  // During billing, show all states so user sees facturas getting authorized in real-time
+  const isProcessing = !!activeTaskId
+  const estadosFilter = isProcessing ? undefined : 'pendiente,borrador,error'
+
   const { data: facturasData, isLoading: isLoadingFacturas } = useQuery({
-    queryKey: ['facturas', { lote_id: selectedLote, page, per_page: perPage }],
+    queryKey: ['facturas', { lote_id: selectedLote, page, per_page: perPage, estados: estadosFilter }],
     queryFn: async () => {
-      const response = await api.facturas.list({
+      const params = {
         lote_id: selectedLote,
-        estados: 'pendiente,borrador,error',
         page,
         per_page: perPage,
-      })
+      }
+      if (estadosFilter) params.estados = estadosFilter
+      const response = await api.facturas.list(params)
       return response.data
     },
     enabled: !!selectedLote,
@@ -61,6 +66,14 @@ function Facturar() {
   const { data: jobStatus } = useJobStatus(activeTaskId, {
     enabled: !!activeTaskId,
   })
+
+  // Refresh table as facturas get processed
+  const lastProgress = jobStatus?.progress?.current
+  useEffect(() => {
+    if (isProcessing && lastProgress != null) {
+      queryClient.invalidateQueries(['facturas'])
+    }
+  }, [isProcessing, lastProgress, queryClient])
 
   // Mutations
   const deleteFacturasMutation = useMutation({
