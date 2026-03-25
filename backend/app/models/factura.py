@@ -30,9 +30,6 @@ class Factura(db.Model):
     importe_neto = db.Column(db.Numeric(15, 2), nullable=False)
     importe_iva = db.Column(db.Numeric(15, 2), default=Decimal('0'))
 
-    # Flag para indicar si el CSV vino sin IVA discriminado
-    items_sin_iva = db.Column(db.Boolean, default=False)
-
     # Moneda
     moneda = db.Column(db.String(3), default='PES')
     cotizacion = db.Column(db.Numeric(15, 6), default=Decimal('1'))
@@ -90,7 +87,6 @@ class Factura(db.Model):
             'importe_total': float(self.importe_total),
             'importe_neto': float(self.importe_neto),
             'importe_iva': float(self.importe_iva) if self.importe_iva else 0,
-            'items_sin_iva': self.items_sin_iva or False,
             'moneda': self.moneda,
             'cotizacion': float(self.cotizacion) if self.cotizacion else 1,
             'cae': self.cae,
