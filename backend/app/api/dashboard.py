@@ -5,7 +5,7 @@ from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func
 
 from ..extensions import db
-from ..models import Factura, Receptor
+from ..models import Factura, Facturador, Receptor
 from ..utils import permission_required
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -40,6 +40,7 @@ def get_stats():
     ticket_promedio = None
     facturacion_12_meses = []
     top_clientes = []
+    desglose_facturadores = []
 
     if not hide_sensitive:
         total_mes = period_query.with_entities(func.sum(Factura.importe_total)).filter(
@@ -55,6 +56,7 @@ def get_stats():
 
         facturacion_12_meses = _build_facturacion_12_meses(g.tenant_id, selected_month)
         top_clientes = _build_top_clientes(g.tenant_id, period_start, period_end)
+        desglose_facturadores = _build_desglose_facturadores(g.tenant_id, period_start, period_end)
 
     return jsonify({
         'facturas_mes': facturas_mes,
@@ -65,6 +67,7 @@ def get_stats():
         'facturacion_12_meses': facturacion_12_meses,
         'top_clientes': top_clientes,
         'ticket_promedio': ticket_promedio,
+        'desglose_facturadores': desglose_facturadores,
         'sensitive_hidden': hide_sensitive,
         'filtros_aplicados': {
             'historico': historico,
@@ -213,6 +216,73 @@ def _ticket_value(tenant_id, period_start: date | None, period_end: date | None)
     cantidad = int(row.cantidad or 0)
     valor = (total / cantidad) if cantidad else Decimal('0')
     return valor, total, cantidad
+
+
+def _build_desglose_facturadores(tenant_id, period_start: date | None, period_end: date | None):
+    TIPO_LABELS = {1: 'A', 6: 'B'}
+
+    query = db.session.query(
+        Factura.facturador_id,
+        Facturador.razon_social,
+        Factura.tipo_comprobante,
+        func.coalesce(func.sum(Factura.importe_neto), 0).label('neto_total'),
+        func.coalesce(func.sum(Factura.importe_iva), 0).label('iva_total'),
+        func.count(Factura.id).label('cantidad'),
+    ).join(
+        Facturador, Facturador.id == Factura.facturador_id,
+    ).filter(
+        Factura.tenant_id == tenant_id,
+        Factura.estado == 'autorizado',
+        Factura.tipo_comprobante.in_([1, 6]),
+    )
+
+    query = _apply_period_filter(query, period_start, period_end)
+
+    rows = query.group_by(
+        Factura.facturador_id,
+        Facturador.razon_social,
+        Factura.tipo_comprobante,
+    ).order_by(
+        Facturador.razon_social,
+        Factura.tipo_comprobante,
+    ).all()
+
+    facturadores = {}
+    for row in rows:
+        fid = str(row.facturador_id)
+        if fid not in facturadores:
+            facturadores[fid] = {
+                'facturador_id': fid,
+                'razon_social': row.razon_social,
+                'tipos': [],
+                'neto_total': Decimal('0'),
+                'iva_total': Decimal('0'),
+                'cantidad': 0,
+            }
+        entry = facturadores[fid]
+        neto = row.neto_total or Decimal('0')
+        iva = row.iva_total or Decimal('0')
+        cant = int(row.cantidad or 0)
+
+        entry['tipos'].append({
+            'tipo': TIPO_LABELS.get(row.tipo_comprobante, str(row.tipo_comprobante)),
+            'tipo_comprobante': row.tipo_comprobante,
+            'neto_total': float(neto),
+            'iva_total': float(iva),
+            'cantidad': cant,
+        })
+        entry['neto_total'] += neto
+        entry['iva_total'] += iva
+        entry['cantidad'] += cant
+
+    result = []
+    for entry in facturadores.values():
+        entry['neto_total'] = float(entry['neto_total'])
+        entry['iva_total'] = float(entry['iva_total'])
+        result.append(entry)
+
+    result.sort(key=lambda x: x['razon_social'])
+    return result
 
 
 def _build_ticket_promedio(tenant_id, period_start: date | None, period_end: date | None, historico: bool):

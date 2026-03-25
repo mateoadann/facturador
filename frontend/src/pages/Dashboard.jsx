@@ -48,6 +48,7 @@ function Dashboard() {
   const trendData = stats?.facturacion_12_meses || []
   const topClientes = stats?.top_clientes || []
   const ticket = stats?.ticket_promedio || null
+  const desgloseFacturadores = stats?.desglose_facturadores || []
   const sensitiveHidden = !!stats?.sensitive_hidden
   const maxTrendTotal = trendData.reduce((max, item) => Math.max(max, item.total || 0), 0)
 
@@ -166,21 +167,79 @@ function Dashboard() {
               </div>
             </div>
 
-            <div className="rounded-lg bg-card p-6 shadow-sm">
-              <div className="mb-2 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-text-primary">Ticket promedio</h2>
-                <FileText className="h-5 w-5 text-primary" />
+            <div className="flex flex-col gap-6">
+              <div className="rounded-lg bg-card p-6 shadow-sm">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-text-primary">Ticket promedio</h2>
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                <p className="text-4xl font-bold text-primary">
+                  {formatCurrency(ticket?.valor || 0)}
+                </p>
+                <p className="mt-2 text-sm text-text-secondary">
+                  Total facturado: <span className="font-medium text-text-primary">{formatCurrency(ticket?.total || 0)}</span>
+                  {' '}en <span className="font-medium text-text-primary">{ticket?.cantidad || 0}</span> facturas autorizadas
+                </p>
+                <p className={`mt-2 text-sm ${ticketVariation != null && ticketVariation >= 0 ? 'text-success' : 'text-text-secondary'}`}>
+                  {ticketVariationLabel}
+                </p>
               </div>
-              <p className="text-4xl font-bold text-primary">
-                {formatCurrency(ticket?.valor || 0)}
-              </p>
-              <p className="mt-2 text-sm text-text-secondary">
-                Total facturado: <span className="font-medium text-text-primary">{formatCurrency(ticket?.total || 0)}</span>
-                {' '}en <span className="font-medium text-text-primary">{ticket?.cantidad || 0}</span> facturas autorizadas
-              </p>
-              <p className={`mt-2 text-sm ${ticketVariation != null && ticketVariation >= 0 ? 'text-success' : 'text-text-secondary'}`}>
-                {ticketVariationLabel}
-              </p>
+
+              <div className="flex-1 rounded-lg bg-card p-6 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-text-primary">Desglose Neto / IVA</h2>
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                {desgloseFacturadores.length === 0 ? (
+                  <p className="text-text-secondary">Sin datos para el periodo seleccionado</p>
+                ) : (
+                  <div className="space-y-6">
+                    {desgloseFacturadores.map((fac) => (
+                      <div key={fac.facturador_id}>
+                        <h3 className="mb-3 text-base font-bold text-text-primary">{fac.razon_social}</h3>
+                        <table className="w-full">
+                          <thead>
+                            <tr>
+                              <th className="pb-2 text-left text-sm font-normal text-text-secondary" />
+                              {fac.tipos.map((tipo) => (
+                                <th key={tipo.tipo_comprobante} className="pb-2 text-right text-sm font-bold text-primary">
+                                  Factura {tipo.tipo}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="text-sm">
+                            <tr>
+                              <td className="py-2 font-medium text-text-secondary">Neto</td>
+                              {fac.tipos.map((tipo) => (
+                                <td key={tipo.tipo_comprobante} className="py-2 text-right font-semibold text-text-primary">
+                                  {formatCurrency(tipo.neto_total)}
+                                </td>
+                              ))}
+                            </tr>
+                            <tr>
+                              <td className="py-2 font-medium text-text-secondary">IVA</td>
+                              {fac.tipos.map((tipo) => (
+                                <td key={tipo.tipo_comprobante} className="py-2 text-right font-semibold text-text-primary">
+                                  {formatCurrency(tipo.iva_total)}
+                                </td>
+                              ))}
+                            </tr>
+                            <tr className="border-t border-border">
+                              <td className="pt-3 text-base font-bold text-text-primary">Total</td>
+                              {fac.tipos.map((tipo) => (
+                                <td key={tipo.tipo_comprobante} className="pt-3 text-right text-base font-bold text-primary">
+                                  {formatCurrency(tipo.neto_total + tipo.iva_total)}
+                                </td>
+                              ))}
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

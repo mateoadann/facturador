@@ -395,23 +395,26 @@ def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
             hasta=factura.fecha_hasta,
             vto_pago=factura.fecha_vto_pago
         )
-        builder.set_receptor(
-            doc_tipo=factura.receptor.doc_tipo,
-            doc_nro=factura.receptor.doc_nro
-        )
+        # Factura B: DocTipo=99 (Consumidor Final), DocNro=0
+        if es_comprobante_tipo_b(factura.tipo_comprobante):
+            builder.set_receptor(doc_tipo=99, doc_nro='0')
+        else:
+            builder.set_receptor(
+                doc_tipo=factura.receptor.doc_tipo,
+                doc_nro=factura.receptor.doc_nro
+            )
 
         _autocompletar_condicion_iva_receptor(client, factura)
         condicion_iva_receptor_id = _resolve_condicion_iva_receptor_id(factura)
-        
+
         # RG 5616: CondicionIVAReceptorId es obligatorio para A, B y C
         if condicion_iva_receptor_id is None:
             raise ValueError(
                 f'No se pudo determinar la condicion IVA del receptor {factura.receptor.doc_nro}. '
                 'Completa la condicion IVA del receptor desde el modulo Receptores.'
             )
-        
+
         # Para Factura B: siempre usar condición 5 (Consumidor Final)
-        # sin importar la condición real del receptor
         if es_comprobante_tipo_b(factura.tipo_comprobante):
             condicion_iva_receptor_id = 5
         

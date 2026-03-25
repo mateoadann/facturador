@@ -221,7 +221,7 @@ def _build_custom_body_html(custom_body):
 
     return f"""
     <html>
-    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0 auto;">
+    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0;">
         <p>{body_content}</p>
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
@@ -297,7 +297,7 @@ def _build_comprobante_email_body_from_data(receptor_nombre, facturador_nombre, 
 
     return f"""
     <html>
-    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0 auto;">
+    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0;">
         {body_content}
 
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
