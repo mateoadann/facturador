@@ -96,8 +96,12 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         factura = _recalculate_from_items(factura, grouped)
 
         # Cross-validation: comparar declarados vs calculados (T2)
-        validation_error = _cross_validate_importes(factura)
-        factura['_validation_error'] = validation_error
+        cross_error = _cross_validate_importes(factura)
+        recalc_error = factura.get('_validation_error')
+
+        # Merge validation errors from recalculation and cross-validation
+        all_errors = [e for e in (recalc_error, cross_error) if e]
+        factura['_validation_error'] = '; '.join(all_errors) if all_errors else None
 
         facturas.append(factura)
 
@@ -106,37 +110,48 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
 
 def _recalculate_from_items(factura: Dict[str, Any], grouped: Dict) -> Dict[str, Any]:
     """Recalcula importes desde los items.
-    
+
     Si viene importe_iva del CSV, se distribuye proporcionalmente por item.
-    Si NO viene importe_iva, marca items_sin_iva = true.
+    Si NO viene importe_iva y el tipo es A (1,2,3) o B (6,7,8), es un error de validación.
+    Si NO viene importe_iva y el tipo es C (11,12,13), se acepta con IVA=0.
     """
     items = factura['items']
-    
+    tipo = factura.get('tipo_comprobante')
+
+    # Tipos que REQUIEREN IVA
+    TIPOS_A = {1, 2, 3}
+    TIPOS_B = {6, 7, 8}
+
     # Calcular subtotal de cada item (precio * cantidad)
     for item in items:
         item['subtotal'] = (item['cantidad'] * item['precio_unitario']).quantize(Decimal('0.01'))
-    
+
     importe_neto_total = sum(item['subtotal'] for item in items).quantize(Decimal('0.01'))
-    
+
     # Verificar si viene importe_iva del CSV
     importe_iva_csv = resolve_grouped_amount(grouped.get('importe_iva_rows', []))
-    
+
     if importe_iva_csv is not None and importe_iva_csv > 0:
         for item in items:
             proporcion = item['subtotal'] / importe_neto_total if importe_neto_total > 0 else Decimal('0')
             item['importe_iva'] = (importe_iva_csv * proporcion).quantize(Decimal('0.02'))
             item['importe_neto'] = item['subtotal']
-        
+
         factura['importe_iva'] = importe_iva_csv.quantize(Decimal('0.01'))
-        factura['items_sin_iva'] = False
     else:
-        # No viene IVA - marcar como sin IVA
+        # No viene IVA — validar según tipo de comprobante
+        if tipo in TIPOS_A or tipo in TIPOS_B:
+            letra = 'A' if tipo in TIPOS_A else 'B'
+            factura['_validation_error'] = (
+                f'Factura {letra} (tipo {tipo}) requiere importe_iva mayor a 0. '
+                f'Las facturas tipo {letra} deben incluir IVA.'
+            )
+
         for item in items:
             item['importe_iva'] = Decimal('0')
             item['importe_neto'] = item['subtotal']
         factura['importe_iva'] = Decimal('0')
-        factura['items_sin_iva'] = True
-    
+
     factura['importe_neto'] = importe_neto_total
     factura['importe_total'] = (importe_neto_total + factura['importe_iva']).quantize(Decimal('0.01'))
 

@@ -420,7 +420,6 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturado
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
         estado='pendiente',
-        items_sin_iva=data.get('items_sin_iva', False)
     )
     db.session.add(factura)
     db.session.flush()

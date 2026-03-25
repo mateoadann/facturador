@@ -674,22 +674,7 @@ def _build_iva_from_items(factura: Factura) -> list[dict]:
     if not factura.items:
         return []
 
-    # Caso especial: Factura B sin IVA discriminado
-    # Usar importe_neto directo de la factura como BaseImp
-    if es_comprobante_tipo_b(factura.tipo_comprobante) and getattr(factura, 'items_sin_iva', False):
-        base = Decimal(str(factura.importe_neto or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        iva_total = Decimal(str(factura.importe_iva or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        
-        if base > 0 and iva_total > 0:
-            alicuota_id = 5  # 21% - alícuota por defecto para Factura B
-            return [{
-                'Id': alicuota_id,
-                'BaseImp': base,
-                'Importe': iva_total,
-            }]
-        return []
-
-    # Caso normal: calcular desde items
+    # Calcular desde items
     bases_por_alicuota: dict[int, Decimal] = {}
 
     for item in factura.items:

@@ -47,19 +47,39 @@ class TestParseCSV:
         assert 'items' in facturas[0]
         assert facturas[0]['items'][0]['descripcion'] == 'Servicio web'
         assert facturas[0]['items'][0]['cantidad'] == Decimal('1')
-        assert facturas[0]['items_sin_iva'] == False
         assert facturas[0]['importe_neto'] == Decimal('10000.00')
         assert facturas[0]['importe_iva'] == Decimal('2100.00')
         assert facturas[0]['importe_total'] == Decimal('12100.00')
 
-    def test_parse_csv_with_items_no_iva(self):
-        """CSV con importe_iva=0 marca la factura como sin IVA discriminado."""
+    def test_parse_csv_factura_a_without_iva_returns_validation_error(self):
+        """Factura A (tipo 1) sin IVA produce error de validación."""
         csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
 30111111111,1,1,2026-01-15,10000.00,10000.00,0,Servicio web,1,10000.00"""
 
         facturas, errors = parse_csv(csv_content)
         assert len(facturas) == 1
-        assert facturas[0]['items_sin_iva'] == True
+        assert facturas[0]['_validation_error'] is not None
+        assert 'Factura A' in facturas[0]['_validation_error']
+        assert 'importe_iva' in facturas[0]['_validation_error']
+
+    def test_parse_csv_factura_b_without_iva_returns_validation_error(self):
+        """Factura B (tipo 6) sin IVA produce error de validación."""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,6,1,2026-01-15,10000.00,10000.00,0,Servicio web,1,10000.00"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert facturas[0]['_validation_error'] is not None
+        assert 'Factura B' in facturas[0]['_validation_error']
+
+    def test_parse_csv_factura_c_without_iva_succeeds(self):
+        """Factura C (tipo 11) sin IVA es válida."""
+        csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
+30111111111,11,1,2026-01-15,10000.00,10000.00,0,Servicio web,1,10000.00"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert facturas[0]['_validation_error'] is None
         assert facturas[0]['importe_iva'] == Decimal('0')
         assert facturas[0]['importe_total'] == Decimal('10000.00')
 
@@ -73,7 +93,6 @@ class TestParseCSV:
 
         assert len(errors) == 0
         assert len(facturas) == 1
-        assert facturas[0]['items_sin_iva'] == False
         assert facturas[0]['importe_neto'] == Decimal('150000.00')
         assert facturas[0]['importe_iva'] == Decimal('31500.00')
         assert facturas[0]['importe_total'] == Decimal('181500.00')
@@ -81,18 +100,19 @@ class TestParseCSV:
         assert facturas[0]['items'][0]['descripcion'] == 'Servicio mensual'
         assert facturas[0]['items'][1]['descripcion'] == 'Soporte técnico'
 
-    def test_parse_csv_groups_repeated_totals_no_iva(self):
-        """Cuando no viene importe_iva, marca como sin IVA."""
+    def test_parse_csv_groups_repeated_totals_no_iva_factura_a_returns_error(self):
+        """Factura A agrupada sin IVA produce error de validación."""
         csv_content = """receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario
-30111111111,1,1,2026-01-15,100.00,100.00,0,Servicio mensual,1,100.00
-30111111111,1,1,2026-01-15,100.00,100.00,0,Sueldos,1,100.00
-30111111111,1,1,2026-01-15,100.00,100.00,0,Honorarios,1,100.00"""
+30111111111,1,1,2026-01-15,300.00,300.00,0,Servicio mensual,1,100.00
+30111111111,1,1,2026-01-15,300.00,300.00,0,Sueldos,1,100.00
+30111111111,1,1,2026-01-15,300.00,300.00,0,Honorarios,1,100.00"""
 
         facturas, errors = parse_csv(csv_content)
 
         assert len(errors) == 0
         assert len(facturas) == 1
-        assert facturas[0]['items_sin_iva'] == True
+        assert facturas[0]['_validation_error'] is not None
+        assert 'Factura A' in facturas[0]['_validation_error']
         assert facturas[0]['importe_neto'] == Decimal('300.00')
         assert facturas[0]['importe_iva'] == Decimal('0')
         assert facturas[0]['importe_total'] == Decimal('300.00')
