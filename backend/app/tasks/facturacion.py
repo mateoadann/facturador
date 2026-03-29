@@ -19,6 +19,7 @@ from ..services.comprobante_rules import (
     normalizar_importes_para_tipo_c,
 )
 from ..services.encryption import decrypt_certificate
+from .email import EMAIL_SEND_DELAY_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             if factura.facturador_id not in facturas_por_facturador:
                 facturas_por_facturador[factura.facturador_id] = []
             facturas_por_facturador[factura.facturador_id].append(factura)
+
+        email_index = 0
 
         for facturador_id, facturas_grupo in facturas_por_facturador.items():
             _log_facturacion_trace(
@@ -236,10 +239,25 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                                 cae=factura.cae,
                             )
 
-                            # Enviar email automáticamente si el receptor tiene email
-                            if factura.receptor and factura.receptor.email:
+                            _destinatarios = _resolver_destinatarios_email(factura)
+                            _use_overrides = _has_factura_overrides(factura)
+
+                            if _destinatarios:
                                 from .email import enviar_factura_email
-                                enviar_factura_email.delay(str(factura.id), str(factura.tenant_id))
+                                enviar_factura_email.apply_async(
+                                    args=[str(factura.id), str(factura.tenant_id)],
+                                    kwargs={'destinatarios': _destinatarios, 'use_factura_overrides': _use_overrides},
+                                    countdown=email_index * EMAIL_SEND_DELAY_SECONDS,
+                                )
+                                email_index += 1
+                            elif factura.receptor and factura.receptor.email:
+                                from .email import enviar_factura_email
+                                enviar_factura_email.apply_async(
+                                    args=[str(factura.id), str(factura.tenant_id)],
+                                    kwargs={'use_factura_overrides': _use_overrides},
+                                    countdown=email_index * EMAIL_SEND_DELAY_SECONDS,
+                                )
+                                email_index += 1
                         else:
                             factura.estado = 'error'
                             factura.error_codigo = result.get('error_code')
@@ -357,6 +375,31 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             lote_fallback.processed_at = datetime.utcnow()
             db.session.commit()
         raise
+
+
+def _has_factura_overrides(factura: Factura) -> bool:
+    """Determina si la factura tiene overrides de email del CSV."""
+    return bool((factura.email_asunto or '').strip())
+
+
+def _resolver_destinatarios_email(factura: Factura) -> list[str] | None:
+    """Resuelve lista de destinatarios para envío automático post-ARCA.
+
+    Si hay emails_cc en la factura (del CSV), bypasea email_habilitado.
+    Si no hay emails_cc, retorna None para que siga el flujo default.
+    """
+    emails_cc_raw = (factura.emails_cc or '').strip()
+
+    if not emails_cc_raw:
+        return None
+
+    destinatarios = []
+    if factura.receptor and factura.receptor.email:
+        destinatarios.append(factura.receptor.email.strip())
+    destinatarios.extend(
+        e.strip() for e in emails_cc_raw.split(',') if e.strip()
+    )
+    return destinatarios if destinatarios else None
 
 
 def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:

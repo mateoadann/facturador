@@ -16,6 +16,7 @@ dashboard_bp = Blueprint('dashboard', __name__)
 def get_stats():
     month_param = (request.args.get('month') or '').strip()
     historico = (request.args.get('historico', 'false') or '').lower() == 'true'
+    facturador_id = (request.args.get('facturador_id') or '').strip() or None
 
     today = datetime.utcnow().date()
     selected_month = _parse_month(month_param) if month_param else today.replace(day=1)
@@ -24,6 +25,8 @@ def get_stats():
     period_end = None if historico else _next_month(selected_month)
 
     base_query = Factura.query.filter(Factura.tenant_id == g.tenant_id)
+    if facturador_id:
+        base_query = base_query.filter(Factura.facturador_id == facturador_id)
     period_query = _apply_period_filter(base_query, period_start, period_end)
 
     facturas_mes = period_query.count()
@@ -52,11 +55,25 @@ def get_stats():
             period_start=period_start,
             period_end=period_end,
             historico=historico,
+            facturador_id=facturador_id,
         )
 
-        facturacion_12_meses = _build_facturacion_12_meses(g.tenant_id, selected_month)
-        top_clientes = _build_top_clientes(g.tenant_id, period_start, period_end)
-        desglose_facturadores = _build_desglose_facturadores(g.tenant_id, period_start, period_end)
+        facturacion_12_meses = _build_facturacion_12_meses(g.tenant_id, selected_month, facturador_id=facturador_id)
+        top_clientes = _build_top_clientes(g.tenant_id, period_start, period_end, facturador_id=facturador_id)
+        desglose_facturadores = _build_desglose_facturadores(g.tenant_id, period_start, period_end, facturador_id=facturador_id)
+
+    max_fecha_query = db.session.query(
+        func.max(Factura.fecha_emision)
+    ).filter(
+        Factura.tenant_id == g.tenant_id,
+        Factura.estado == 'autorizado',
+    )
+    if facturador_id:
+        max_fecha_query = max_fecha_query.filter(Factura.facturador_id == facturador_id)
+    max_fecha = max_fecha_query.scalar()
+    max_month = max_fecha.strftime('%Y-%m') if max_fecha else today.strftime('%Y-%m')
+    if max_month < today.strftime('%Y-%m'):
+        max_month = today.strftime('%Y-%m')
 
     return jsonify({
         'facturas_mes': facturas_mes,
@@ -69,6 +86,7 @@ def get_stats():
         'ticket_promedio': ticket_promedio,
         'desglose_facturadores': desglose_facturadores,
         'sensitive_hidden': hide_sensitive,
+        'max_month': max_month,
         'filtros_aplicados': {
             'historico': historico,
             'month': selected_month.strftime('%Y-%m'),
@@ -113,11 +131,11 @@ def _sub_months(value: date, count: int) -> date:
     return date(year, month, 1)
 
 
-def _build_facturacion_12_meses(tenant_id, selected_month: date):
+def _build_facturacion_12_meses(tenant_id, selected_month: date, facturador_id=None):
     start_month = _sub_months(selected_month, 11)
     end_month = _next_month(selected_month)
 
-    rows = db.session.query(
+    query = db.session.query(
         func.extract('year', Factura.fecha_emision).label('year'),
         func.extract('month', Factura.fecha_emision).label('month'),
         func.count(Factura.id).label('cantidad'),
@@ -127,7 +145,10 @@ def _build_facturacion_12_meses(tenant_id, selected_month: date):
         Factura.estado == 'autorizado',
         Factura.fecha_emision >= start_month,
         Factura.fecha_emision < end_month,
-    ).group_by('year', 'month').all()
+    )
+    if facturador_id:
+        query = query.filter(Factura.facturador_id == facturador_id)
+    rows = query.group_by('year', 'month').all()
 
     by_month = {
         _month_key(int(row.year), int(row.month)): {
@@ -152,7 +173,7 @@ def _build_facturacion_12_meses(tenant_id, selected_month: date):
     return serie
 
 
-def _build_top_clientes(tenant_id, period_start: date | None, period_end: date | None):
+def _build_top_clientes(tenant_id, period_start: date | None, period_end: date | None, facturador_id=None):
     top_query = db.session.query(
         Factura.receptor_id,
         Receptor.razon_social,
@@ -166,6 +187,8 @@ def _build_top_clientes(tenant_id, period_start: date | None, period_end: date |
         Factura.tenant_id == tenant_id,
         Factura.estado == 'autorizado',
     )
+    if facturador_id:
+        top_query = top_query.filter(Factura.facturador_id == facturador_id)
 
     top_query = _apply_period_filter(top_query, period_start, period_end)
 
@@ -178,13 +201,15 @@ def _build_top_clientes(tenant_id, period_start: date | None, period_end: date |
         func.count(Factura.id).desc(),
     ).limit(10).all()
 
-    total_periodo = db.session.query(
+    total_periodo_q = db.session.query(
         func.coalesce(func.sum(Factura.importe_total), 0)
     ).filter(
         Factura.tenant_id == tenant_id,
         Factura.estado == 'autorizado',
     )
-    total_periodo = _apply_period_filter(total_periodo, period_start, period_end).scalar() or Decimal('0')
+    if facturador_id:
+        total_periodo_q = total_periodo_q.filter(Factura.facturador_id == facturador_id)
+    total_periodo = _apply_period_filter(total_periodo_q, period_start, period_end).scalar() or Decimal('0')
 
     result = []
     for row in rows:
@@ -202,7 +227,7 @@ def _build_top_clientes(tenant_id, period_start: date | None, period_end: date |
     return result
 
 
-def _ticket_value(tenant_id, period_start: date | None, period_end: date | None):
+def _ticket_value(tenant_id, period_start: date | None, period_end: date | None, facturador_id=None):
     query = db.session.query(
         func.coalesce(func.sum(Factura.importe_total), 0).label('total'),
         func.count(Factura.id).label('cantidad'),
@@ -210,6 +235,8 @@ def _ticket_value(tenant_id, period_start: date | None, period_end: date | None)
         Factura.tenant_id == tenant_id,
         Factura.estado == 'autorizado',
     )
+    if facturador_id:
+        query = query.filter(Factura.facturador_id == facturador_id)
 
     row = _apply_period_filter(query, period_start, period_end).first()
     total = row.total or Decimal('0')
@@ -218,7 +245,7 @@ def _ticket_value(tenant_id, period_start: date | None, period_end: date | None)
     return valor, total, cantidad
 
 
-def _build_desglose_facturadores(tenant_id, period_start: date | None, period_end: date | None):
+def _build_desglose_facturadores(tenant_id, period_start: date | None, period_end: date | None, facturador_id=None):
     TIPO_LABELS = {1: 'A', 6: 'B'}
 
     query = db.session.query(
@@ -235,6 +262,8 @@ def _build_desglose_facturadores(tenant_id, period_start: date | None, period_en
         Factura.estado == 'autorizado',
         Factura.tipo_comprobante.in_([1, 6]),
     )
+    if facturador_id:
+        query = query.filter(Factura.facturador_id == facturador_id)
 
     query = _apply_period_filter(query, period_start, period_end)
 
@@ -285,15 +314,15 @@ def _build_desglose_facturadores(tenant_id, period_start: date | None, period_en
     return result
 
 
-def _build_ticket_promedio(tenant_id, period_start: date | None, period_end: date | None, historico: bool):
-    actual, actual_total, actual_cantidad = _ticket_value(tenant_id, period_start, period_end)
+def _build_ticket_promedio(tenant_id, period_start: date | None, period_end: date | None, historico: bool, facturador_id=None):
+    actual, actual_total, actual_cantidad = _ticket_value(tenant_id, period_start, period_end, facturador_id=facturador_id)
     variacion_pct = None
     anterior_valor = None
 
     if not historico and period_start is not None:
         previous_start = _sub_months(period_start, 1)
         previous_end = period_start
-        anterior, _, _ = _ticket_value(tenant_id, previous_start, previous_end)
+        anterior, _, _ = _ticket_value(tenant_id, previous_start, previous_end, facturador_id=facturador_id)
         anterior_valor = float(anterior)
         if anterior > 0:
             variacion_pct = float(((actual - anterior) / anterior) * Decimal('100'))

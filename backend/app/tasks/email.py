@@ -7,11 +7,13 @@ from ..models import Factura, EmailConfig
 
 logger = logging.getLogger(__name__)
 
+EMAIL_SEND_DELAY_SECONDS = 3
+
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def enviar_factura_email(self, factura_id: str, tenant_id: str,
                          custom_asunto=None, custom_body=None,
-                         destinatarios=None):
+                         destinatarios=None, use_factura_overrides=False):
     """Envía el comprobante PDF por email al receptor de forma async."""
     factura = Factura.query.filter_by(id=factura_id, tenant_id=tenant_id).first()
     if not factura:
@@ -32,6 +34,7 @@ def enviar_factura_email(self, factura_id: str, tenant_id: str,
             custom_asunto=custom_asunto,
             custom_body=custom_body,
             destinatarios=destinatarios,
+            use_factura_overrides=use_factura_overrides,
         )
 
     except (
@@ -83,56 +86,40 @@ def enviar_emails_lote(self, lote_id: str, tenant_id: str, mode: str = 'no_envia
 
     facturas = query.all()
     total = len(facturas)
-    processed = 0
-    sent = 0
+    dispatched = 0
     skipped = 0
-    errors = 0
 
     if total == 0:
         return {
             'status': 'completed',
-            'processed': 0,
             'total': 0,
-            'sent': 0,
+            'dispatched': 0,
             'skipped': 0,
-            'errors': 0,
         }
 
     for factura in facturas:
-        result = _enviar_factura_email_sync(
-            factura,
-            allow_resend=(mode == 'todos'),
-            raise_on_error=False,
-        )
-
-        if result.get('success'):
-            sent += 1
-        elif result.get('skipped'):
+        if not factura.receptor or not factura.receptor.email:
             skipped += 1
-        else:
-            errors += 1
+            continue
 
-        processed += 1
-        self.update_state(state='PROGRESS', meta={
-            'current': processed,
-            'total': total,
-            'percent': int((processed / total) * 100),
-        })
+        enviar_factura_email.apply_async(
+            args=[str(factura.id), str(factura.tenant_id)],
+            countdown=dispatched * EMAIL_SEND_DELAY_SECONDS,
+        )
+        dispatched += 1
 
     return {
         'status': 'completed',
-        'processed': processed,
         'total': total,
-        'sent': sent,
+        'dispatched': dispatched,
         'skipped': skipped,
-        'errors': errors,
         'mode': mode,
     }
 
 
 def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False,
                                 custom_asunto=None, custom_body=None,
-                                destinatarios=None):
+                                destinatarios=None, use_factura_overrides=False):
     if factura.email_enviado and not allow_resend:
         logger.info(f'Factura {factura.id} ya tiene email enviado, omitiendo')
         return {'skipped': True, 'reason': 'Ya enviado'}
@@ -142,14 +129,27 @@ def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False
         logger.info(f'Factura {factura.id} sin email de receptor, omitiendo')
         return {'skipped': True, 'reason': 'Sin email de receptor'}
 
-    config = EmailConfig.query.filter_by(
-        tenant_id=factura.tenant_id,
-        email_habilitado=True,
-    ).first()
+    # Cuando hay destinatarios explícitos (emails_cc), buscar config SIN filtrar por email_habilitado
+    if destinatarios:
+        config = EmailConfig.query.filter_by(tenant_id=factura.tenant_id).first()
+    else:
+        config = EmailConfig.query.filter_by(
+            tenant_id=factura.tenant_id,
+            email_habilitado=True,
+        ).first()
 
     if not config:
-        logger.info(f'Tenant {factura.tenant_id} sin config de email habilitada')
+        logger.info(f'Tenant {factura.tenant_id} sin config de email')
         return {'skipped': True, 'reason': 'Sin config de email'}
+
+    # Leer overrides de la factura si corresponde
+    factura_asunto = None
+    factura_mensaje = None
+    factura_firma = None
+    if use_factura_overrides:
+        factura_asunto = factura.email_asunto
+        factura_mensaje = factura.email_mensaje
+        factura_firma = factura.email_firma
 
     try:
         from ..services.email_service import send_comprobante_email
@@ -158,6 +158,9 @@ def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False
             custom_asunto=custom_asunto,
             custom_body=custom_body,
             destinatarios=destinatarios,
+            factura_asunto=factura_asunto,
+            factura_mensaje=factura_mensaje,
+            factura_firma=factura_firma,
         )
 
         factura.email_enviado = True

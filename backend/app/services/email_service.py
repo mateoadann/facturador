@@ -89,14 +89,19 @@ def send_email(config, to_email, subject, html_body, attachments=None):
 
 
 def send_comprobante_email(factura, custom_asunto=None, custom_body=None,
-                           destinatarios=None):
+                           destinatarios=None,
+                           factura_asunto=None, factura_mensaje=None,
+                           factura_firma=None):
     """Envía el comprobante PDF de una factura autorizada al receptor.
 
     Args:
         factura: Factura con estado 'autorizado' y receptor con email
-        custom_asunto: Asunto personalizado (opcional, para reenvíos)
-        custom_body: Cuerpo en texto plano personalizado (opcional, para reenvíos)
+        custom_asunto: Asunto personalizado (opcional, para reenvíos manuales)
+        custom_body: Cuerpo en texto plano personalizado (opcional, para reenvíos manuales)
         destinatarios: Lista de emails destino (opcional, si no se usa receptor.email)
+        factura_asunto: Override de asunto desde CSV (opcional)
+        factura_mensaje: Override de mensaje desde CSV (opcional)
+        factura_firma: Override de firma desde CSV (opcional)
 
     Raises:
         ValueError: Si la factura no está autorizada o no hay destinatario
@@ -111,13 +116,17 @@ def send_comprobante_email(factura, custom_asunto=None, custom_body=None,
     if not destinatarios and (not receptor or not receptor.email):
         raise ValueError('El receptor no tiene email configurado')
 
-    config = EmailConfig.query.filter_by(
-        tenant_id=factura.tenant_id,
-        email_habilitado=True,
-    ).first()
+    # Cuando hay destinatarios explícitos, buscar config sin filtrar por email_habilitado
+    if destinatarios:
+        config = EmailConfig.query.filter_by(tenant_id=factura.tenant_id).first()
+    else:
+        config = EmailConfig.query.filter_by(
+            tenant_id=factura.tenant_id,
+            email_habilitado=True,
+        ).first()
 
     if not config:
-        raise ValueError('No hay configuración de email habilitada para este tenant')
+        raise ValueError('No hay configuración de email para este tenant')
 
     # Generar HTML y PDF del comprobante
     from .comprobante_renderer import render_comprobante_html
@@ -138,13 +147,24 @@ def send_comprobante_email(factura, custom_asunto=None, custom_body=None,
     tipo_nombre = TIPOS_COMPROBANTE.get(factura.tipo_comprobante, 'Comprobante')
     comprobante_str = f'{tipo_nombre} {punto_venta:05d}-{numero:08d}'
 
+    # Resolución de asunto (3 niveles de prioridad)
     if custom_asunto:
         subject = custom_asunto
+    elif factura_asunto:
+        subject = _apply_placeholders(factura_asunto, factura, facturador_nombre, comprobante_str)
     else:
         subject = _build_subject(config, comprobante_str, facturador_nombre)
 
+    # Resolución de body (3 niveles de prioridad)
     if custom_body:
         body_html = _build_custom_body_html(custom_body)
+    elif factura_asunto:
+        # email_asunto is the override switch — use override body (may be empty)
+        body_html = _build_override_email_body(
+            factura, facturador_nombre, config, comprobante_str,
+            mensaje=factura_mensaje,
+            firma=factura_firma,
+        )
     else:
         body_html = _build_comprobante_email_body(factura, facturador_nombre, config, comprobante_str)
 
@@ -212,6 +232,44 @@ def build_email_preview(email_asunto=None, email_mensaje=None, email_saludo=None
             'from_name': (from_name or '').strip() or None,
         },
     }
+
+
+def _apply_placeholders(text, factura, facturador_nombre, comprobante_str):
+    """Sustituye placeholders {receptor}, {facturador}, {comprobante} en texto."""
+    receptor_nombre = factura.receptor.razon_social if factura.receptor else ''
+    return (
+        text
+        .replace('{receptor}', receptor_nombre)
+        .replace('{facturador}', facturador_nombre)
+        .replace('{comprobante}', comprobante_str)
+    )
+
+
+def _build_override_email_body(factura, facturador_nombre, config, comprobante_str,
+                                mensaje=None, firma=None):
+    """Body con overrides del CSV. Usa SOLO mensaje y firma del CSV, sin config saludo/despedida."""
+    sections = []
+    if mensaje:
+        mensaje_html = _apply_placeholders(mensaje, factura, facturador_nombre, comprobante_str)
+        sections.append(f'<p>{mensaje_html.replace(chr(10), "<br>")}</p>')
+    if firma:
+        firma_html = _apply_placeholders(firma, factura, facturador_nombre, comprobante_str)
+        sections.append(f'<p style="color: #475569;">{firma_html.replace(chr(10), "<br>")}</p>')
+
+    body_content = '\n        '.join(sections)
+
+    return f"""
+    <html>
+    <body style="font-family: Inter, sans-serif; color: #1e293b; padding: 20px; max-width: 600px; margin: 0;">
+        {body_content}
+
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <p style="color: #94a3b8; font-size: 11px;">
+            Enviado automáticamente por <a href="https://adain.dev" style="color: #94a3b8; text-decoration: underline;">AD&#923;IN AI Solutions</a>
+        </p>
+    </body>
+    </html>
+    """
 
 
 def _build_custom_body_html(custom_body):

@@ -43,21 +43,47 @@ function EmailResendModal({ isOpen, onClose, factura, onConfirm }) {
     setConfigError(false)
     setNuevoEmail('')
 
-    // Pre-cargar email del receptor
-    const receptorEmail = factura.receptor?.email
-    setDestinatarios(receptorEmail ? [receptorEmail] : [])
+    // Pre-cargar email del receptor + emails_cc
+    const initialEmails = []
+    if (factura.receptor?.email) {
+      initialEmails.push(factura.receptor.email)
+    }
+    if (factura.emails_cc) {
+      const ccEmails = factura.emails_cc.split(',').map((e) => e.trim()).filter(Boolean)
+      ccEmails.forEach((e) => {
+        if (!initialEmails.includes(e)) initialEmails.push(e)
+      })
+    }
+    setDestinatarios(initialEmails)
+
+    // Build comprobante string (shared by both paths)
+    const tipoLabel = TIPO_COMPROBANTE_LABELS[factura.tipo_comprobante] || 'Comprobante'
+    const pv = String(factura.punto_venta || 0).padStart(5, '0')
+    const nro = String(factura.numero_comprobante || 0).padStart(8, '0')
+    const comprobanteStr = `${tipoLabel} ${pv}-${nro}`
+    const facturadorNombre = factura.facturador?.razon_social || 'Facturador'
+    const receptorNombre = factura.receptor?.razon_social || factura.receptor?.doc_nro || ''
+
+    // If CSV override fields exist, use them directly (no config fetch needed for subject/body)
+    if (factura.email_asunto) {
+      const csvAsunto = factura.email_asunto
+        .replace('{comprobante}', comprobanteStr)
+        .replace('{facturador}', facturadorNombre)
+        .replace('{receptor}', receptorNombre)
+      setAsunto(csvAsunto)
+
+      const csvParts = []
+      if (factura.email_mensaje) csvParts.push(factura.email_mensaje)
+      if (factura.email_firma) csvParts.push(factura.email_firma)
+      setBody(csvParts.join('\n\n'))
+      setLoading(false)
+      return
+    }
 
     api.email
       .getConfig()
       .then((response) => {
         const config = response.data
-
-        // Build comprobante string
-        const tipoLabel = TIPO_COMPROBANTE_LABELS[factura.tipo_comprobante] || 'Comprobante'
-        const pv = String(factura.punto_venta || 0).padStart(5, '0')
-        const nro = String(factura.numero_comprobante || 0).padStart(8, '0')
-        const comprobanteStr = `${tipoLabel} ${pv}-${nro}`
-        const facturadorNombre = factura.facturador?.razon_social || 'Facturador'
 
         // Build subject
         if (config.email_asunto) {
@@ -71,8 +97,6 @@ function EmailResendModal({ isOpen, onClose, factura, onConfirm }) {
         }
 
         // Build body from config fields
-        const receptorNombre = factura.receptor?.razon_social || factura.receptor?.doc_nro || ''
-
         const saludo = (config.email_saludo || 'Estimado/a {receptor},')
           .replace('{receptor}', receptorNombre)
           .replace('{facturador}', facturadorNombre)
@@ -133,7 +157,7 @@ function EmailResendModal({ isOpen, onClose, factura, onConfirm }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Reenviar comprobante por email"
+      title={factura?.email_enviado ? 'Reenviar comprobante por email' : 'Enviar comprobante por email'}
       className="max-w-lg"
       footer={(
         <>
@@ -141,7 +165,7 @@ function EmailResendModal({ isOpen, onClose, factura, onConfirm }) {
             Cancelar
           </Button>
           <Button onClick={handleConfirm} disabled={loading || configError || !asunto.trim()}>
-            {loading ? 'Cargando...' : 'Reenviar'}
+            {loading ? 'Cargando...' : factura?.email_enviado ? 'Reenviar' : 'Enviar'}
           </Button>
         </>
       )}
@@ -154,9 +178,9 @@ function EmailResendModal({ isOpen, onClose, factura, onConfirm }) {
         ) : (
           <>
             <p className="text-sm text-text-secondary">
-              Este comprobante ya fue enviado
-              {factura?.email_enviado_at ? ` el ${formatDateTime(factura.email_enviado_at)}` : ''}.
-              Puede editar el contenido del email antes de reenviarlo.
+              {factura?.email_enviado
+                ? <>Este comprobante ya fue enviado{factura?.email_enviado_at ? ` el ${formatDateTime(factura.email_enviado_at)}` : ''}. Puede editar el contenido del email antes de reenviarlo.</>
+                : 'Configure los destinatarios y el contenido del email antes de enviarlo.'}
             </p>
 
             <div>

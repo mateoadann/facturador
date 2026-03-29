@@ -39,7 +39,14 @@ const TIPO_COMPROBANTE_LABELS = {
 
 function formatDateShort(date) {
   if (!date) return ''
-  const parsed = new Date(date)
+  const str = String(date).trim()
+  let parsed
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split('-').map(Number)
+    parsed = new Date(y, m - 1, d)
+  } else {
+    parsed = new Date(date)
+  }
   if (Number.isNaN(parsed.getTime())) return String(date)
   const day = String(parsed.getDate()).padStart(2, '0')
   const month = String(parsed.getMonth() + 1).padStart(2, '0')
@@ -277,8 +284,8 @@ function Facturas() {
       return
     }
 
-    // Si ya fue enviado y no hay customData, abrir modal de reenvío
-    if (factura.email_enviado && !customData) {
+    // Si ya fue enviado o no tiene email del receptor, abrir modal para editar destinatarios
+    if ((factura.email_enviado || !factura.receptor?.email) && !customData) {
       setResendModal({ isOpen: true, factura })
       return
     }
@@ -510,7 +517,7 @@ function Facturas() {
                         )}
                         PDF
                       </Button>
-                      {canSendEmail && factura.estado === 'autorizado' && factura.receptor?.email && (
+                      {canSendEmail && factura.estado === 'autorizado' && (
                         <button
                           className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-secondary"
                           onClick={() => handleSendEmail(factura)}

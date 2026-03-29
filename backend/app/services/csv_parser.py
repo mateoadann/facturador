@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import List, Dict, Any, Tuple
@@ -27,6 +28,10 @@ GROUP_KEY_EXCLUDE_COLUMNS = {
     '_declared_importe_neto',
     '_declared_importe_iva',
     '_validation_error',
+    'emails_cc',
+    'email_asunto',
+    'email_mensaje',
+    'email_firma',
 }
 
 OPTIONAL_COLUMNS = [
@@ -36,7 +41,14 @@ OPTIONAL_COLUMNS = [
     'cbte_asoc_tipo',
     'cbte_asoc_pto_vta',
     'cbte_asoc_nro',
+    'emails_cc',
+    'email_asunto',
+    'email_mensaje',
+    'email_firma',
 ]
+
+EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+MAX_CC_EMAILS = 10
 
 
 def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -94,6 +106,11 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         factura['items'] = grouped['items']
         # Items siempre presentes: recalcular importes desde los items
         factura = _recalculate_from_items(factura, grouped)
+
+        # Sum declared values from ALL rows before cross-validation
+        factura['_declared_importe_total'] = sum(grouped['importe_total_rows'])
+        factura['_declared_importe_neto'] = sum(grouped['importe_neto_rows'])
+        factura['_declared_importe_iva'] = sum(grouped['importe_iva_rows'])
 
         # Cross-validation: comparar declarados vs calculados (T2)
         cross_error = _cross_validate_importes(factura)
@@ -237,6 +254,26 @@ def parse_factura_row(row: Dict[str, str], row_num: int) -> Dict[str, Any]:
 
     # moneda y cotizacion se ignoran silenciosamente (ya no se usan)
 
+    # Email override fields (optional)
+    emails_cc_raw = (row.get('emails_cc') or '').strip()
+    if emails_cc_raw:
+        factura['emails_cc'] = _validate_emails_cc(emails_cc_raw)
+    email_asunto = (row.get('email_asunto') or '').strip()
+    if email_asunto:
+        factura['email_asunto'] = email_asunto
+    email_mensaje = (row.get('email_mensaje') or '').strip()
+    if email_mensaje:
+        factura['email_mensaje'] = email_mensaje
+    email_firma = (row.get('email_firma') or '').strip()
+    if email_firma:
+        factura['email_firma'] = email_firma
+
+    # email_mensaje y email_firma sin email_asunto no tienen sentido
+    if not factura.get('email_asunto') and (factura.get('email_mensaje') or factura.get('email_firma')):
+        factura['_email_override_warning'] = 'email_mensaje y email_firma se ignoran sin email_asunto'
+        factura.pop('email_mensaje', None)
+        factura.pop('email_firma', None)
+
     # Comprobante asociado (para notas de crédito/débito)
     if row.get('cbte_asoc_tipo'):
         factura['cbte_asoc_tipo'] = parse_int(row.get('cbte_asoc_tipo'), 'cbte_asoc_tipo')
@@ -314,3 +351,14 @@ def parse_date(value: str, field_name: str) -> datetime:
         pass
 
     raise ValueError(f"Campo '{field_name}' debe tener formato YYYY-MM-DD o DD/MM/YYYY")
+
+
+def _validate_emails_cc(value: str) -> str:
+    """Valida y normaliza emails_cc: formato email, máximo 10 direcciones."""
+    emails = [e.strip() for e in value.split(',') if e.strip()]
+    if len(emails) > MAX_CC_EMAILS:
+        raise ValueError(f'emails_cc: máximo {MAX_CC_EMAILS} direcciones')
+    for email in emails:
+        if not EMAIL_RE.match(email):
+            raise ValueError(f'emails_cc: formato inválido: {email}')
+    return ','.join(emails)
