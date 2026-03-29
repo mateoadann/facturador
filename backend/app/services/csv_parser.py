@@ -107,6 +107,11 @@ def parse_csv(file_content: str) -> Tuple[List[Dict[str, Any]], List[str]]:
         # Items siempre presentes: recalcular importes desde los items
         factura = _recalculate_from_items(factura, grouped)
 
+        # Sum declared values from ALL rows before cross-validation
+        factura['_declared_importe_total'] = sum(grouped['importe_total_rows'])
+        factura['_declared_importe_neto'] = sum(grouped['importe_neto_rows'])
+        factura['_declared_importe_iva'] = sum(grouped['importe_iva_rows'])
+
         # Cross-validation: comparar declarados vs calculados (T2)
         cross_error = _cross_validate_importes(factura)
         recalc_error = factura.get('_validation_error')
