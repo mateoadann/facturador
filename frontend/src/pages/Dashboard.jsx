@@ -7,6 +7,7 @@ import {
   Button,
   DatePicker,
   MetricCard,
+  Select,
   Table,
   TableBody,
   TableCell,
@@ -32,13 +33,24 @@ function Dashboard() {
   const currentUserId = useAuthStore((s) => s.user?.id)
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue())
   const [historico, setHistorico] = useState(false)
+  const [selectedFacturador, setSelectedFacturador] = useState('')
+
+  const { data: facturadores } = useQuery({
+    queryKey: ['facturadores-list'],
+    queryFn: async () => {
+      const response = await api.facturadores.list()
+      return response.data?.items || response.data || []
+    },
+    enabled: !!currentUserId,
+  })
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard-stats', currentUserId, { selectedMonth, historico }],
+    queryKey: ['dashboard-stats', currentUserId, { selectedMonth, historico, selectedFacturador }],
     queryFn: async () => {
       const params = historico
         ? { historico: true }
         : { month: selectedMonth }
+      if (selectedFacturador) params.facturador_id = selectedFacturador
       const response = await api.dashboard.getStats(params)
       return response.data
     },
@@ -91,9 +103,21 @@ function Dashboard() {
                   label="Mes de analisis"
                   value={selectedMonth}
                   disabled={historico}
-                  max={getCurrentMonthValue()}
+                  max={stats?.max_month || getCurrentMonthValue()}
                   onChange={(v) => setSelectedMonth(v)}
                 />
+              </div>
+              <div className="w-full sm:w-auto sm:min-w-[200px]">
+                <Select
+                  label="Facturador"
+                  value={selectedFacturador}
+                  onChange={(e) => setSelectedFacturador(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {(facturadores || []).map((f) => (
+                    <option key={f.id} value={f.id}>{f.razon_social}</option>
+                  ))}
+                </Select>
               </div>
               <Button
                 variant={historico ? 'primary' : 'secondary'}
