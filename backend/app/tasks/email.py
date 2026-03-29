@@ -7,6 +7,8 @@ from ..models import Factura, EmailConfig
 
 logger = logging.getLogger(__name__)
 
+EMAIL_SEND_DELAY_SECONDS = 3
+
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def enviar_factura_email(self, factura_id: str, tenant_id: str,
@@ -84,49 +86,33 @@ def enviar_emails_lote(self, lote_id: str, tenant_id: str, mode: str = 'no_envia
 
     facturas = query.all()
     total = len(facturas)
-    processed = 0
-    sent = 0
+    dispatched = 0
     skipped = 0
-    errors = 0
 
     if total == 0:
         return {
             'status': 'completed',
-            'processed': 0,
             'total': 0,
-            'sent': 0,
+            'dispatched': 0,
             'skipped': 0,
-            'errors': 0,
         }
 
     for factura in facturas:
-        result = _enviar_factura_email_sync(
-            factura,
-            allow_resend=(mode == 'todos'),
-            raise_on_error=False,
-        )
-
-        if result.get('success'):
-            sent += 1
-        elif result.get('skipped'):
+        if not factura.receptor or not factura.receptor.email:
             skipped += 1
-        else:
-            errors += 1
+            continue
 
-        processed += 1
-        self.update_state(state='PROGRESS', meta={
-            'current': processed,
-            'total': total,
-            'percent': int((processed / total) * 100),
-        })
+        enviar_factura_email.apply_async(
+            args=[str(factura.id), str(factura.tenant_id)],
+            countdown=dispatched * EMAIL_SEND_DELAY_SECONDS,
+        )
+        dispatched += 1
 
     return {
         'status': 'completed',
-        'processed': processed,
         'total': total,
-        'sent': sent,
+        'dispatched': dispatched,
         'skipped': skipped,
-        'errors': errors,
         'mode': mode,
     }
 

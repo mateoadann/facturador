@@ -19,6 +19,7 @@ from ..services.comprobante_rules import (
     normalizar_importes_para_tipo_c,
 )
 from ..services.encryption import decrypt_certificate
+from .email import EMAIL_SEND_DELAY_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,8 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             if factura.facturador_id not in facturas_por_facturador:
                 facturas_por_facturador[factura.facturador_id] = []
             facturas_por_facturador[factura.facturador_id].append(factura)
+
+        email_index = 0
 
         for facturador_id, facturas_grupo in facturas_por_facturador.items():
             _log_facturacion_trace(
@@ -241,17 +244,20 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
 
                             if _destinatarios:
                                 from .email import enviar_factura_email
-                                enviar_factura_email.delay(
-                                    str(factura.id), str(factura.tenant_id),
-                                    destinatarios=_destinatarios,
-                                    use_factura_overrides=_use_overrides,
+                                enviar_factura_email.apply_async(
+                                    args=[str(factura.id), str(factura.tenant_id)],
+                                    kwargs={'destinatarios': _destinatarios, 'use_factura_overrides': _use_overrides},
+                                    countdown=email_index * EMAIL_SEND_DELAY_SECONDS,
                                 )
+                                email_index += 1
                             elif factura.receptor and factura.receptor.email:
                                 from .email import enviar_factura_email
-                                enviar_factura_email.delay(
-                                    str(factura.id), str(factura.tenant_id),
-                                    use_factura_overrides=_use_overrides,
+                                enviar_factura_email.apply_async(
+                                    args=[str(factura.id), str(factura.tenant_id)],
+                                    kwargs={'use_factura_overrides': _use_overrides},
+                                    countdown=email_index * EMAIL_SEND_DELAY_SECONDS,
                                 )
+                                email_index += 1
                         else:
                             factura.estado = 'error'
                             factura.error_codigo = result.get('error_code')
