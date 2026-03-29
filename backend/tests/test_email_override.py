@@ -229,7 +229,7 @@ class TestEmailContentResolution:
                 assert 'Firma custom' in call_kwargs['html_body']
 
     def test_only_asunto_override(self, app, db, tenant, facturador, receptor_con_email, email_config):
-        """Solo asunto override -> asunto del CSV, body con override vacío (saludo + despedida)."""
+        """Solo asunto override -> asunto del CSV, body sin saludo/despedida/mensaje/firma."""
         factura = _make_factura(
             db, tenant, facturador, receptor_con_email,
             email_asunto='Asunto Custom',
@@ -250,13 +250,11 @@ class TestEmailContentResolution:
 
                 call_kwargs = mock_send.call_args.kwargs
                 assert call_kwargs['subject'] == 'Asunto Custom'
-                # email_asunto triggers override path — no config mensaje/firma
                 body = call_kwargs['html_body']
                 assert 'Adjunto su comprobante electronico' not in body
                 assert 'Equipo Contable' not in body
-                # saludo and despedida from config are still used
-                assert 'Estimado/a' in body
-                assert 'Saludos cordiales' in body
+                assert 'Estimado/a' not in body
+                assert 'Saludos cordiales' not in body
 
     def test_no_override_uses_email_config(self, app, db, tenant, facturador, receptor_con_email, email_config):
         """Sin override -> usa contenido de EmailConfig (comportamiento actual)."""
@@ -415,3 +413,156 @@ class TestEmailHabilitadoBypass:
             with patch('app.services.email_service.send_comprobante_email'):
                 result = _enviar_factura_email_sync(factura)
                 assert result.get('success') is True
+
+
+class TestBuildOverrideEmailBody:
+    """Tests para _build_override_email_body(): solo mensaje + firma del CSV."""
+
+    def test_override_body_contains_only_mensaje_and_firma(self, app, db, tenant, facturador, receptor_con_email, email_config):
+        """Override body debe contener SOLO mensaje y firma, sin saludo ni despedida de config."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='Asunto Custom',
+            email_mensaje='Mensaje del CSV',
+            email_firma='Firma del CSV',
+        )
+        with app.app_context():
+            from app.services.email_service import _build_override_email_body
+            body = _build_override_email_body(
+                factura, 'Test SA', email_config, 'Factura A 00001-00000001',
+                mensaje='Mensaje del CSV',
+                firma='Firma del CSV',
+            )
+            assert 'Mensaje del CSV' in body
+            assert 'Firma del CSV' in body
+            assert 'Estimado/a' not in body
+            assert 'Saludos cordiales' not in body
+
+    def test_override_body_empty_mensaje_and_firma(self, app, db, tenant, facturador, receptor_con_email, email_config):
+        """Sin mensaje ni firma, el body tiene solo el footer HTML."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='Asunto Custom',
+        )
+        with app.app_context():
+            from app.services.email_service import _build_override_email_body
+            body = _build_override_email_body(
+                factura, 'Test SA', email_config, 'Factura A 00001-00000001',
+                mensaje=None,
+                firma=None,
+            )
+            assert 'Estimado/a' not in body
+            assert 'Saludos cordiales' not in body
+            assert 'adain.dev' in body
+
+    def test_override_body_placeholders_applied(self, app, db, tenant, facturador, receptor_con_email, email_config):
+        """Placeholders en mensaje y firma se sustituyen correctamente."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='Asunto',
+            email_mensaje='Hola {receptor}',
+            email_firma='De {facturador}',
+        )
+        with app.app_context():
+            from app.services.email_service import _build_override_email_body
+            body = _build_override_email_body(
+                factura, 'Test SA', email_config, 'Factura A 00001-00000001',
+                mensaje='Hola {receptor}',
+                firma='De {facturador}',
+            )
+            assert 'Hola Receptor Email SA' in body
+            assert 'De Test SA' in body
+            assert '{receptor}' not in body
+            assert '{facturador}' not in body
+
+
+class TestHasFacturaOverrides:
+    """Tests para _has_factura_overrides()."""
+
+    def test_returns_true_when_email_asunto_has_content(self, db, tenant, facturador, receptor_con_email):
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='Asunto Custom',
+        )
+        from app.tasks.facturacion import _has_factura_overrides
+        assert _has_factura_overrides(factura) is True
+
+    def test_returns_false_when_email_asunto_is_none(self, db, tenant, facturador, receptor_con_email):
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto=None,
+        )
+        from app.tasks.facturacion import _has_factura_overrides
+        assert _has_factura_overrides(factura) is False
+
+    def test_returns_false_when_email_asunto_is_empty(self, db, tenant, facturador, receptor_con_email):
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='',
+        )
+        from app.tasks.facturacion import _has_factura_overrides
+        assert _has_factura_overrides(factura) is False
+
+    def test_returns_false_when_email_asunto_is_whitespace(self, db, tenant, facturador, receptor_con_email):
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            email_asunto='   ',
+        )
+        from app.tasks.facturacion import _has_factura_overrides
+        assert _has_factura_overrides(factura) is False
+
+
+class TestDispatchUseFacturaOverrides:
+    """Tests para verificar que use_factura_overrides se pasa correctamente en ambas ramas."""
+
+    def test_cc_branch_passes_use_overrides_true(self, app, db, tenant, facturador, receptor_con_email):
+        """Con emails_cc + email_asunto -> use_factura_overrides=True en rama CC."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            emails_cc='cc@test.com',
+            email_asunto='Asunto Custom',
+        )
+        from app.tasks.facturacion import _resolver_destinatarios_email, _has_factura_overrides
+        destinatarios = _resolver_destinatarios_email(factura)
+        use_overrides = _has_factura_overrides(factura)
+        assert destinatarios is not None
+        assert use_overrides is True
+
+    def test_cc_branch_passes_use_overrides_false(self, app, db, tenant, facturador, receptor_con_email):
+        """Con emails_cc pero sin email_asunto -> use_factura_overrides=False en rama CC."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            emails_cc='cc@test.com',
+            email_asunto=None,
+        )
+        from app.tasks.facturacion import _resolver_destinatarios_email, _has_factura_overrides
+        destinatarios = _resolver_destinatarios_email(factura)
+        use_overrides = _has_factura_overrides(factura)
+        assert destinatarios is not None
+        assert use_overrides is False
+
+    def test_no_cc_branch_passes_use_overrides_true(self, app, db, tenant, facturador, receptor_con_email):
+        """Sin emails_cc + email_asunto -> use_factura_overrides=True en rama no-CC."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            emails_cc=None,
+            email_asunto='Asunto Custom',
+        )
+        from app.tasks.facturacion import _resolver_destinatarios_email, _has_factura_overrides
+        destinatarios = _resolver_destinatarios_email(factura)
+        use_overrides = _has_factura_overrides(factura)
+        assert destinatarios is None
+        assert use_overrides is True
+
+    def test_no_cc_no_overrides(self, app, db, tenant, facturador, receptor_con_email):
+        """Sin emails_cc ni email_asunto -> use_factura_overrides=False en rama no-CC."""
+        factura = _make_factura(
+            db, tenant, facturador, receptor_con_email,
+            emails_cc=None,
+            email_asunto=None,
+        )
+        from app.tasks.facturacion import _resolver_destinatarios_email, _has_factura_overrides
+        destinatarios = _resolver_destinatarios_email(factura)
+        use_overrides = _has_factura_overrides(factura)
+        assert destinatarios is None
+        assert use_overrides is False

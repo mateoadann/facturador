@@ -247,25 +247,11 @@ def _apply_placeholders(text, factura, facturador_nombre, comprobante_str):
 
 def _build_override_email_body(factura, facturador_nombre, config, comprobante_str,
                                 mensaje=None, firma=None):
-    """Body con overrides del CSV. Saludo/despedida usan config, mensaje/firma del CSV."""
-    receptor_nombre = factura.receptor.razon_social if factura.receptor else ''
-
-    saludo_raw = config.email_saludo if config.email_saludo else 'Estimado/a {receptor},'
-    saludo = (
-        saludo_raw
-        .replace('{receptor}', receptor_nombre)
-        .replace('{facturador}', facturador_nombre)
-        .replace('{comprobante}', comprobante_str)
-    )
-
-    despedida = config.email_despedida if config.email_despedida else 'Saludos cordiales'
-    despedida_html = despedida.replace('\n', '<br>')
-
-    sections = [f'<p>{saludo}</p>']
+    """Body con overrides del CSV. Usa SOLO mensaje y firma del CSV, sin config saludo/despedida."""
+    sections = []
     if mensaje:
         mensaje_html = _apply_placeholders(mensaje, factura, facturador_nombre, comprobante_str)
         sections.append(f'<p>{mensaje_html.replace(chr(10), "<br>")}</p>')
-    sections.append(f'<p>{despedida_html}</p>')
     if firma:
         firma_html = _apply_placeholders(firma, factura, facturador_nombre, comprobante_str)
         sections.append(f'<p style="color: #475569;">{firma_html.replace(chr(10), "<br>")}</p>')

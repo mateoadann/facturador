@@ -236,18 +236,22 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                                 cae=factura.cae,
                             )
 
-                            # Resolver destinatarios: emails_cc del CSV bypasea email_habilitado
                             _destinatarios = _resolver_destinatarios_email(factura)
+                            _use_overrides = _has_factura_overrides(factura)
+
                             if _destinatarios:
                                 from .email import enviar_factura_email
                                 enviar_factura_email.delay(
                                     str(factura.id), str(factura.tenant_id),
                                     destinatarios=_destinatarios,
-                                    use_factura_overrides=True,
+                                    use_factura_overrides=_use_overrides,
                                 )
                             elif factura.receptor and factura.receptor.email:
                                 from .email import enviar_factura_email
-                                enviar_factura_email.delay(str(factura.id), str(factura.tenant_id))
+                                enviar_factura_email.delay(
+                                    str(factura.id), str(factura.tenant_id),
+                                    use_factura_overrides=_use_overrides,
+                                )
                         else:
                             factura.estado = 'error'
                             factura.error_codigo = result.get('error_code')
@@ -365,6 +369,11 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             lote_fallback.processed_at = datetime.utcnow()
             db.session.commit()
         raise
+
+
+def _has_factura_overrides(factura: Factura) -> bool:
+    """Determina si la factura tiene overrides de email del CSV."""
+    return bool((factura.email_asunto or '').strip())
 
 
 def _resolver_destinatarios_email(factura: Factura) -> list[str] | None:
