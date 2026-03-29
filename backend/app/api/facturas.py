@@ -341,6 +341,9 @@ def import_csv():
             facturas_creadas.append(factura)
             if factura.estado == 'error' and factura.error_mensaje:
                 warnings.append(f"Fila {idx + 1}: {factura.error_mensaje}")
+            email_warn = factura_data.get('_email_override_warning')
+            if email_warn:
+                warnings.append(f"Fila {idx + 1}: {email_warn}")
         except ValueError as e:
             errores_creacion.append(f"Fila {idx + 2}: {str(e)}")
 
@@ -420,6 +423,10 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturado
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
         estado='pendiente',
+        emails_cc=data.get('emails_cc'),
+        email_asunto=data.get('email_asunto'),
+        email_mensaje=data.get('email_mensaje'),
+        email_firma=data.get('email_firma'),
     )
     db.session.add(factura)
     db.session.flush()

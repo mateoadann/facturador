@@ -264,3 +264,116 @@ class TestParseDecimal:
     def test_parse_decimal_empty(self):
         with pytest.raises(ValueError):
             parse_decimal('', 'test')
+
+
+class TestEmailCsvColumns:
+    """Tests para columnas opcionales de email override en CSV."""
+
+    HEADER = 'receptor_cuit,tipo_comprobante,concepto,fecha_emision,importe_total,importe_neto,importe_iva,item_descripcion,item_cantidad,item_precio_unitario'
+
+    def test_csv_without_email_columns_backward_compatible(self):
+        """CSV sin columnas de email parsea igual que antes (backward compat)."""
+        csv_content = f"""{self.HEADER}
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert len(errors) == 0
+        assert 'emails_cc' not in facturas[0]
+        assert 'email_asunto' not in facturas[0]
+        assert 'email_mensaje' not in facturas[0]
+        assert 'email_firma' not in facturas[0]
+
+    def test_csv_with_valid_emails_cc(self):
+        """CSV con emails_cc válidos se parsean correctamente."""
+        csv_content = f"""{self.HEADER},emails_cc
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,admin@test.com,contador@test.com"""
+
+        # emails_cc is comma-separated but the CSV field itself uses commas,
+        # so we need to quote the field properly
+        csv_content = f"""{self.HEADER},emails_cc
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,"admin@test.com,contador@test.com"
+"""
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert len(errors) == 0
+        assert facturas[0]['emails_cc'] == 'admin@test.com,contador@test.com'
+
+    def test_csv_with_invalid_emails_cc_format(self):
+        """CSV con emails_cc inválidos genera error de validación."""
+        csv_content = f"""{self.HEADER},emails_cc
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,no-es-email"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 1
+        assert 'emails_cc' in errors[0]
+        assert 'formato inválido' in errors[0]
+
+    def test_csv_with_more_than_10_emails_cc(self):
+        """CSV con más de 10 emails en emails_cc genera error."""
+        emails = ','.join([f'user{i}@test.com' for i in range(11)])
+        csv_content = f"""{self.HEADER},emails_cc
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,"{emails}"
+"""
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 1
+        assert 'máximo' in errors[0]
+        assert '10' in errors[0]
+
+    def test_csv_with_partial_content_override_only_asunto(self):
+        """CSV con solo email_asunto (sin mensaje ni firma)."""
+        csv_content = f"""{self.HEADER},email_asunto
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,Factura Custom"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert len(errors) == 0
+        assert facturas[0]['email_asunto'] == 'Factura Custom'
+        assert 'email_mensaje' not in facturas[0]
+        assert 'email_firma' not in facturas[0]
+
+    def test_csv_with_all_email_override_fields(self):
+        """CSV con las 4 columnas de email override."""
+        csv_content = f"""{self.HEADER},emails_cc,email_asunto,email_mensaje,email_firma
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,"cc@test.com",Asunto Custom,Mensaje custom,Firma custom"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert len(errors) == 0
+        assert facturas[0]['emails_cc'] == 'cc@test.com'
+        assert facturas[0]['email_asunto'] == 'Asunto Custom'
+        assert facturas[0]['email_mensaje'] == 'Mensaje custom'
+        assert facturas[0]['email_firma'] == 'Firma custom'
+
+    def test_two_rows_different_emails_cc_group_correctly(self):
+        """Dos filas con distinto emails_cc pero mismo receptor se agrupan."""
+        csv_content = f"""{self.HEADER},emails_cc
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,5000.00,"cc1@test.com"
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio B,1,5000.00,"cc2@test.com"
+"""
+        facturas, errors = parse_csv(csv_content)
+        assert len(errors) == 0
+        assert len(facturas) == 1
+        assert len(facturas[0]['items']) == 2
+        # emails_cc de la primera fila prevalece
+        assert facturas[0].get('emails_cc') == 'cc1@test.com'
+
+    def test_csv_mensaje_firma_without_asunto_generates_warning(self):
+        """CSV con email_mensaje y email_firma pero sin email_asunto genera warning y limpia campos."""
+        csv_content = f"""{self.HEADER},email_mensaje,email_firma
+30111111111,1,1,2026-01-15,12100.00,10000.00,2100.00,Servicio A,1,10000.00,Mensaje custom,Firma custom"""
+
+        facturas, errors = parse_csv(csv_content)
+        assert len(facturas) == 1
+        assert len(errors) == 0
+        assert facturas[0]['_email_override_warning'] == 'email_mensaje y email_firma se ignoran sin email_asunto'
+        assert 'email_mensaje' not in facturas[0]
+        assert 'email_firma' not in facturas[0]
+
+    def test_email_columns_in_group_key_exclude(self):
+        """Las 4 columnas de email están en GROUP_KEY_EXCLUDE_COLUMNS."""
+        from app.services.csv_parser import GROUP_KEY_EXCLUDE_COLUMNS
+        assert 'emails_cc' in GROUP_KEY_EXCLUDE_COLUMNS
+        assert 'email_asunto' in GROUP_KEY_EXCLUDE_COLUMNS
+        assert 'email_mensaje' in GROUP_KEY_EXCLUDE_COLUMNS
+        assert 'email_firma' in GROUP_KEY_EXCLUDE_COLUMNS

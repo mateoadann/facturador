@@ -236,8 +236,16 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                                 cae=factura.cae,
                             )
 
-                            # Enviar email automáticamente si el receptor tiene email
-                            if factura.receptor and factura.receptor.email:
+                            # Resolver destinatarios: emails_cc del CSV bypasea email_habilitado
+                            _destinatarios = _resolver_destinatarios_email(factura)
+                            if _destinatarios:
+                                from .email import enviar_factura_email
+                                enviar_factura_email.delay(
+                                    str(factura.id), str(factura.tenant_id),
+                                    destinatarios=_destinatarios,
+                                    use_factura_overrides=True,
+                                )
+                            elif factura.receptor and factura.receptor.email:
                                 from .email import enviar_factura_email
                                 enviar_factura_email.delay(str(factura.id), str(factura.tenant_id))
                         else:
@@ -357,6 +365,26 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
             lote_fallback.processed_at = datetime.utcnow()
             db.session.commit()
         raise
+
+
+def _resolver_destinatarios_email(factura: Factura) -> list[str] | None:
+    """Resuelve lista de destinatarios para envío automático post-ARCA.
+
+    Si hay emails_cc en la factura (del CSV), bypasea email_habilitado.
+    Si no hay emails_cc, retorna None para que siga el flujo default.
+    """
+    emails_cc_raw = (factura.emails_cc or '').strip()
+
+    if not emails_cc_raw:
+        return None
+
+    destinatarios = []
+    if factura.receptor and factura.receptor.email:
+        destinatarios.append(factura.receptor.email.strip())
+    destinatarios.extend(
+        e.strip() for e in emails_cc_raw.split(',') if e.strip()
+    )
+    return destinatarios if destinatarios else None
 
 
 def procesar_factura(client, factura: Factura, facturador: Facturador) -> dict:
