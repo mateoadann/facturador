@@ -1,5 +1,6 @@
 import pytest
 import uuid
+from datetime import date
 from app import create_app
 from app.extensions import db as _db
 from app.config import TestingConfig
@@ -83,6 +84,8 @@ def facturador(db, tenant):
         razon_social='Test SA',
         punto_venta=1,
         condicion_iva='IVA Responsable Inscripto',
+        ingresos_brutos='901-123456-7',
+        fecha_inicio_actividades=date(2020, 1, 1),
         ambiente='testing',
         activo=True
     )
@@ -99,7 +102,7 @@ def receptor(db, tenant):
         doc_tipo=80,
         doc_nro='30111111111',
         razon_social='Receptor SA',
-        condicion_iva='IVA Responsable Inscripto',
+        condicion_iva_id=1,  # IVA Responsable Inscripto
         activo=True
     )
     db.session.add(r)

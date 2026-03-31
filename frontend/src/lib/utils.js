@@ -37,6 +37,9 @@ export function formatDate(date) {
     } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
       const [day, month, year] = raw.split('/').map(Number)
       parsedDate = new Date(year, month - 1, day)
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      const [year, month, day] = raw.split('-').map(Number)
+      parsedDate = new Date(year, month - 1, day)
     } else {
       parsedDate = new Date(raw)
     }

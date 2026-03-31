@@ -4,9 +4,22 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
+  main-pr-source-policy:
+    name: Main PR must come from dev
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate source branch
+        run: |
+          if [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "PRs to main must come from dev. Current head: ${{ github.head_ref }}"
+            exit 1
+          fi
+
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest

@@ -10,7 +10,7 @@ function Table({ children, className }) {
 
 function TableHeader({ children, className }) {
   return (
-    <thead className={cn('bg-[#F9FAFB]', className)}>{children}</thead>
+    <thead className={cn('bg-secondary/60', className)}>{children}</thead>
   )
 }
 

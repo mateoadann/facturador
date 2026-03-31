@@ -1,17 +1,20 @@
-from flask import Blueprint, request, jsonify, g, current_app, make_response
-from uuid import UUID
 from datetime import datetime, date
 from decimal import Decimal, InvalidOperation
+from uuid import UUID
+
+from arca_integration.constants import ALICUOTAS_IVA
+from flask import Blueprint, request, jsonify, g, current_app, make_response
+
 from ..extensions import db
 from ..models import Factura, FacturaItem, Facturador, Receptor, Lote
-from ..services.csv_parser import parse_csv
 from ..services.comprobante_rules import (
     es_comprobante_tipo_c,
     normalizar_importes_para_tipo_c,
 )
-from arca_integration.constants import ALICUOTAS_IVA
-from ..utils import permission_required
+from ..services.comprobante_filename import build_comprobante_pdf_filename
+from ..services.csv_parser import parse_csv
 from ..services.audit import log_action
+from ..utils import permission_required
 
 facturas_bp = Blueprint('facturas', __name__)
 
@@ -23,10 +26,13 @@ def list_facturas():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     lote_id = request.args.get('lote_id')
+    lote_ids = request.args.get('lote_ids')
     estado = request.args.get('estado')
     facturador_id = request.args.get('facturador_id')
     receptor_id = request.args.get('receptor_id')
+    receptor_ids = request.args.get('receptor_ids')
     tipo_comprobante = request.args.get('tipo_comprobante', type=int)
+    tipo_comprobantes = request.args.get('tipo_comprobantes')
     fecha_desde = request.args.get('fecha_desde')
     fecha_hasta = request.args.get('fecha_hasta')
     estados = request.args.get('estados')
@@ -34,7 +40,14 @@ def list_facturas():
     query = Factura.query.filter_by(tenant_id=g.tenant_id)
     allowed_estados = {'autorizado', 'error', 'pendiente', 'borrador'}
 
-    if lote_id:
+    if lote_ids:
+        lote_ids_list = [item.strip() for item in lote_ids.split(',') if item.strip()]
+        try:
+            lote_uuid_list = [UUID(item) for item in lote_ids_list]
+        except ValueError:
+            return jsonify({'error': 'lote_ids inválido'}), 400
+        query = query.filter(Factura.lote_id.in_(lote_uuid_list))
+    elif lote_id:
         query = query.filter_by(lote_id=lote_id)
     if estados:
         estados_list = [item.strip() for item in estados.split(',') if item.strip()]
@@ -50,9 +63,23 @@ def list_facturas():
         query = query.filter_by(estado=estado)
     if facturador_id:
         query = query.filter_by(facturador_id=facturador_id)
-    if receptor_id:
+    if receptor_ids:
+        receptor_ids_list = [item.strip() for item in receptor_ids.split(',') if item.strip()]
+        try:
+            receptor_uuid_list = [UUID(item) for item in receptor_ids_list]
+        except ValueError:
+            return jsonify({'error': 'receptor_ids inválido'}), 400
+        query = query.filter(Factura.receptor_id.in_(receptor_uuid_list))
+    elif receptor_id:
         query = query.filter_by(receptor_id=receptor_id)
-    if tipo_comprobante:
+    if tipo_comprobantes:
+        try:
+            tipos_list = [int(item.strip()) for item in tipo_comprobantes.split(',') if item.strip()]
+        except ValueError:
+            return jsonify({'error': 'tipo_comprobantes inválido'}), 400
+        if tipos_list:
+            query = query.filter(Factura.tipo_comprobante.in_(tipos_list))
+    elif tipo_comprobante:
         query = query.filter_by(tipo_comprobante=tipo_comprobante)
     if fecha_desde:
         query = query.filter(Factura.fecha_emision >= fecha_desde)
@@ -188,8 +215,8 @@ def get_comprobante_html(factura_id):
 
     try:
         html = _get_or_render_comprobante_html(factura, force=force)
-    except Exception as e:
-        return jsonify({'error': f'No se pudo generar el HTML del comprobante: {str(e)}'}), 400
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        return jsonify({'error': f'No se pudo generar el HTML del comprobante: {str(exc)}'}), 400
 
     return jsonify({
         'factura_id': str(factura.id),
@@ -220,12 +247,10 @@ def get_comprobante_pdf(factura_id):
 
         from ..services.comprobante_pdf import html_to_pdf_bytes
         pdf_bytes = html_to_pdf_bytes(html)
-    except Exception as e:
-        return jsonify({'error': f'No se pudo generar PDF: {str(e)}'}), 400
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        return jsonify({'error': f'No se pudo generar PDF: {str(exc)}'}), 400
 
-    punto_venta = int(factura.punto_venta or 0)
-    numero = int(factura.numero_comprobante or 0)
-    filename = f'comprobante-{punto_venta:05d}-{numero:08d}.pdf'
+    filename = build_comprobante_pdf_filename(factura)
 
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
@@ -264,7 +289,7 @@ def import_csv():
         try:
             file.seek(0)
             content = file.read().decode('latin-1')
-        except Exception:
+        except (UnicodeDecodeError, OSError, ValueError):
             return jsonify({'error': 'No se pudo decodificar el archivo'}), 400
 
     # Parsear CSV
@@ -287,72 +312,70 @@ def import_csv():
     db.session.add(lote)
     db.session.flush()
 
+    # Obtener facturador desde form data
+    facturador_id_str = request.form.get('facturador_id')
+    if not facturador_id_str:
+        return jsonify({'error': 'facturador_id es requerido'}), 400
+
+    try:
+        facturador_id = UUID(facturador_id_str)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'facturador_id inválido'}), 400
+
+    facturador = Facturador.query.filter_by(
+        id=facturador_id,
+        tenant_id=g.tenant_id,
+        activo=True
+    ).first()
+    if not facturador:
+        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 400
+
     # Procesar cada factura
     facturas_creadas = []
     errores_creacion = []
-    facturador_ids = set()
+    warnings = []
 
     for idx, factura_data in enumerate(facturas_data):
         try:
-            factura = create_factura_from_data(factura_data, lote.id, g.tenant_id)
+            factura = create_factura_from_data(factura_data, lote.id, g.tenant_id, facturador)
             facturas_creadas.append(factura)
-            facturador_ids.add(factura.facturador_id)
+            if factura.estado == 'error' and factura.error_mensaje:
+                warnings.append(f"Fila {idx + 1}: {factura.error_mensaje}")
+            email_warn = factura_data.get('_email_override_warning')
+            if email_warn:
+                warnings.append(f"Fila {idx + 1}: {email_warn}")
         except ValueError as e:
             errores_creacion.append(f"Fila {idx + 2}: {str(e)}")
-
-    if len(facturador_ids) > 1:
-        db.session.rollback()
-        return jsonify({
-            'error': 'El lote debe contener facturas de un unico facturador/entorno',
-            'details': ['Todas las filas del CSV deben pertenecer al mismo facturador para este lote']
-        }), 400
 
     if facturas_creadas:
         lote.facturador_id = facturas_creadas[0].facturador_id
 
+    lote.total_facturas = len(facturas_creadas)
+    facturas_con_error = sum(1 for f in facturas_creadas if f.estado == 'error')
+    lote.facturas_error = facturas_con_error
+
     log_action('lote:importar', recurso='lote', recurso_id=lote.id,
-               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas)})
+               detalle={'etiqueta': etiqueta, 'facturas': len(facturas_creadas),
+                        'con_errores_validacion': facturas_con_error})
     db.session.commit()
 
     return jsonify({
         'lote': lote.to_dict(),
         'facturas_importadas': len(facturas_creadas),
         'errores_parseo': parse_errors,
-        'errores_creacion': errores_creacion
+        'errores_creacion': errores_creacion,
+        'warnings': warnings
     }), 201
 
 
-def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factura:
-    """Crear una factura a partir de datos parseados del CSV."""
+def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturador: 'Facturador') -> Factura:
+    """Crear una factura a partir de datos parseados del CSV.
 
-    # Buscar facturador por CUIT, priorizando el ambiente configurado
-    facturadores = Facturador.query.filter_by(
-        tenant_id=tenant_id,
-        cuit=data['facturador_cuit'],
-        activo=True
-    ).all()
+    El facturador se recibe directamente (seleccionado via facturador_id en form data).
+    """
 
-    if not facturadores:
-        raise ValueError(f"Facturador con CUIT {data['facturador_cuit']} no encontrado")
-
-    ambiente_preferido = current_app.config.get('ARCA_AMBIENTE', 'testing')
-    facturadores_filtrados = [f for f in facturadores if f.ambiente == ambiente_preferido]
-
-    if len(facturadores_filtrados) == 1:
-        facturador = facturadores_filtrados[0]
-    elif len(facturadores_filtrados) > 1:
-        raise ValueError(
-            f"Hay múltiples facturadores activos para CUIT {data['facturador_cuit']} en ambiente {ambiente_preferido}. "
-            "Desactivá duplicados o ajustá la configuración."
-        )
-    elif len(facturadores) == 1:
-        facturador = facturadores[0]
-    else:
-        ambientes = ', '.join(sorted({f.ambiente for f in facturadores}))
-        raise ValueError(
-            f"No hay facturador activo para CUIT {data['facturador_cuit']} en ambiente {ambiente_preferido}. "
-            f"Disponibles: {ambientes}"
-        )
+    if not facturador:
+        raise ValueError("Facturador no proporcionado")
 
     # Buscar o crear receptor
     receptor = Receptor.query.filter_by(
@@ -394,15 +417,25 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
         importe_total=importe_total,
         importe_neto=importe_neto,
         importe_iva=importe_iva,
-        moneda=data.get('moneda', 'PES'),
-        cotizacion=data.get('cotizacion', 1),
+        moneda='PES',
+        cotizacion=Decimal('1'),
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
         cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
-        estado='pendiente'
+        estado='pendiente',
+        emails_cc=data.get('emails_cc'),
+        email_asunto=data.get('email_asunto'),
+        email_mensaje=data.get('email_mensaje'),
+        email_firma=data.get('email_firma'),
     )
     db.session.add(factura)
     db.session.flush()
+
+    # Marcar con error de validación si el parser lo detectó
+    validation_error = data.get('_validation_error')
+    if validation_error:
+        factura.estado = 'error'
+        factura.error_mensaje = validation_error
 
     # Crear items si existen
     if data.get('items'):
@@ -412,8 +445,10 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str) -> Factur
                 descripcion=item_data['descripcion'],
                 cantidad=item_data['cantidad'],
                 precio_unitario=item_data['precio_unitario'],
-                alicuota_iva_id=item_data.get('alicuota_iva_id', 5),
-                subtotal=item_data['cantidad'] * item_data['precio_unitario'],
+                alicuota_iva_id=5,  # Valor por defecto, se recalcula en facturacion
+                importe_iva=item_data.get('importe_iva', 0),
+                importe_neto=item_data.get('importe_neto', item_data.get('subtotal', item_data['cantidad'] * item_data['precio_unitario'])),
+                subtotal=item_data.get('subtotal', item_data['cantidad'] * item_data['precio_unitario']),
                 orden=idx
             )
             db.session.add(item)
@@ -427,10 +462,7 @@ def _get_or_render_comprobante_html(factura: Factura, force: bool = False) -> st
             return factura.comprobante_html
 
     from ..services.comprobante_renderer import render_comprobante_html
-
-    factura.comprobante_html = render_comprobante_html(factura)
-    db.session.commit()
-    return factura.comprobante_html
+    return render_comprobante_html(factura)
 
 
 def _parse_factura_update_payload(data: dict, factura: Factura, tenant_id: str) -> dict:
@@ -683,8 +715,23 @@ def enviar_email(factura_id):
     if factura.estado != 'autorizado':
         return jsonify({'error': 'Solo se pueden enviar comprobantes de facturas autorizadas'}), 400
 
-    if not factura.receptor or not factura.receptor.email:
-        return jsonify({'error': 'El receptor no tiene email configurado'}), 400
+    # Leer contenido custom opcional (para reenvíos con contenido editado)
+    body = request.get_json(silent=True) or {}
+    custom_asunto = body.get('custom_asunto')
+    custom_body = body.get('custom_body')
+    destinatarios = body.get('destinatarios')  # lista de emails custom
+
+    # Si no hay destinatarios custom, usar el del receptor
+    if not destinatarios:
+        if not factura.receptor or not factura.receptor.email:
+            return jsonify({'error': 'El receptor no tiene email configurado'}), 400
+    else:
+        # Validar que todos los destinatarios sean emails válidos
+        import re
+        email_re = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+        invalid = [e for e in destinatarios if not email_re.match(e)]
+        if invalid:
+            return jsonify({'error': f'Emails inválidos: {", ".join(invalid)}'}), 400
 
     config = EmailConfig.query.filter_by(
         tenant_id=g.tenant_id,
@@ -695,15 +742,23 @@ def enviar_email(factura_id):
         return jsonify({'error': 'No hay configuración de email habilitada'}), 400
 
     from ..tasks.email import enviar_factura_email
-    enviar_factura_email.delay(str(factura.id))
+    kwargs = {}
+    if custom_asunto or custom_body:
+        kwargs['custom_asunto'] = custom_asunto
+        kwargs['custom_body'] = custom_body
+    if destinatarios:
+        kwargs['destinatarios'] = destinatarios
+    enviar_factura_email.delay(str(factura.id), str(g.tenant_id), **kwargs)
 
+    target_emails = destinatarios or [factura.receptor.email]
     log_action('email:enviar', recurso='factura', recurso_id=factura.id,
-               detalle={'receptor_email': factura.receptor.email})
+               detalle={'receptor_email': target_emails,
+                        'reenvio': bool(custom_asunto or custom_body)})
     db.session.commit()
 
     return jsonify({
         'message': 'Email en proceso de envío',
-        'receptor_email': factura.receptor.email,
+        'receptor_email': target_emails,
     }), 202
 
 

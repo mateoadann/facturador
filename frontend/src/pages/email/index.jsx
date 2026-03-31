@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Wifi, Send, Loader2 } from 'lucide-react'
+import { Save, Wifi, Send, Loader2, Eye } from 'lucide-react'
 import { api } from '@/api/client'
 import { toast } from '@/stores/toastStore'
 import { Card } from '@/components/ui'
 import { Button, Input, Badge, Checkbox } from '@/components/ui'
+import EmailPreviewModal from './EmailPreviewModal'
 
 function Email() {
   const queryClient = useQueryClient()
@@ -18,10 +19,14 @@ function Email() {
     from_name: '',
     email_habilitado: true,
     email_asunto: '',
-    email_mensaje: '',
     email_saludo: '',
+    email_mensaje: '',
+    email_despedida: '',
+    email_firma: '',
   })
   const [testEmail, setTestEmail] = useState('')
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [previewPayload, setPreviewPayload] = useState(null)
 
   const { data: config, isLoading } = useQuery({
     queryKey: ['email-config'],
@@ -43,8 +48,10 @@ function Email() {
         from_name: config.from_name || '',
         email_habilitado: config.email_habilitado ?? true,
         email_asunto: config.email_asunto || '',
-        email_mensaje: config.email_mensaje || '',
         email_saludo: config.email_saludo || '',
+        email_mensaje: config.email_mensaje || '',
+        email_despedida: config.email_despedida || '',
+        email_firma: config.email_firma || '',
       })
     }
   }, [config])
@@ -90,8 +97,10 @@ function Email() {
       from_name: formData.from_name,
       email_habilitado: formData.email_habilitado,
       email_asunto: formData.email_asunto,
-      email_mensaje: formData.email_mensaje,
       email_saludo: formData.email_saludo,
+      email_mensaje: formData.email_mensaje,
+      email_despedida: formData.email_despedida,
+      email_firma: formData.email_firma,
     }
     if (formData.smtp_password) {
       payload.smtp_password = formData.smtp_password
@@ -109,6 +118,18 @@ function Email() {
       return
     }
     testSendMutation.mutate({ to_email: testEmail })
+  }
+
+  const handleOpenPreview = () => {
+    setPreviewPayload({
+      email_asunto: formData.email_asunto,
+      email_saludo: formData.email_saludo,
+      email_mensaje: formData.email_mensaje,
+      email_despedida: formData.email_despedida,
+      email_firma: formData.email_firma,
+      from_name: formData.from_name,
+    })
+    setIsPreviewOpen(true)
   }
 
   if (isLoading) {
@@ -250,11 +271,23 @@ function Email() {
             </div>
 
             <div>
+              <Input
+                label="Saludo"
+                placeholder="Estimado/a {receptor},"
+                value={formData.email_saludo}
+                onChange={(e) => setFormData({ ...formData, email_saludo: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Podés usar <code className="rounded bg-secondary px-1">{'{receptor}'}</code>, <code className="rounded bg-secondary px-1">{'{facturador}'}</code> y <code className="rounded bg-secondary px-1">{'{comprobante}'}</code> para insertar datos automáticamente.
+              </p>
+            </div>
+
+            <div>
               <label className="mb-1 block text-sm font-medium text-text-primary">
                 Mensaje principal
               </label>
               <textarea
-                className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                 rows={5}
                 placeholder="Adjunto encontrará el comprobante electrónico correspondiente."
                 value={formData.email_mensaje}
@@ -265,15 +298,44 @@ function Email() {
               </p>
             </div>
 
-            <Input
-              label="Saludo"
-              placeholder="Saludos cordiales"
-              value={formData.email_saludo}
-              onChange={(e) => setFormData({ ...formData, email_saludo: e.target.value })}
-            />
+            <div>
+              <label className="mb-1 block text-sm font-medium text-text-primary">
+                Despedida
+              </label>
+              <textarea
+                className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                rows={2}
+                placeholder="Saludos cordiales"
+                value={formData.email_despedida}
+                onChange={(e) => setFormData({ ...formData, email_despedida: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-text-primary">
+                Firma
+              </label>
+              <textarea
+                className="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                rows={3}
+                placeholder="Juan Pérez - Contador&#10;Tel: (011) 1234-5678"
+                value={formData.email_firma}
+                onChange={(e) => setFormData({ ...formData, email_firma: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-text-muted">
+                Información de contacto o firma que aparece al final del email.
+              </p>
+            </div>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-6 flex items-center gap-3">
+            <Button
+              variant="secondary"
+              icon={Eye}
+              onClick={handleOpenPreview}
+            >
+              Vista previa
+            </Button>
             <Button
               icon={Save}
               onClick={handleSave}
@@ -315,6 +377,12 @@ function Email() {
           </div>
         </Card>
       )}
+
+      <EmailPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        previewPayload={previewPayload}
+      />
     </div>
   )
 }

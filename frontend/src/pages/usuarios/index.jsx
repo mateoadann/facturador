@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import {
   Button,
   Badge,
+  Checkbox,
   Table,
   TableHeader,
   TableBody,
@@ -86,6 +87,23 @@ function Usuarios() {
     },
   })
 
+  const toggleDashboardRestrictionMutation = useMutation({
+    mutationFn: ({ id, restringir_dashboard_sensible }) =>
+      api.usuarios.update(id, { restringir_dashboard_sensible }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries(['usuarios'])
+      queryClient.invalidateQueries(['dashboard-stats'])
+      toast.success(
+        response.data?.restringir_dashboard_sensible
+          ? 'Restricción individual activada'
+          : 'Restricción individual desactivada'
+      )
+    },
+    onError: (error) => {
+      toast.error('Error', error.response?.data?.error || 'No se pudo actualizar la restricción')
+    },
+  })
+
   const usuarios = data?.items || []
 
   const handleOpenModal = (user = null) => {
@@ -152,6 +170,7 @@ function Usuarios() {
               <TableHead>Email</TableHead>
               <TableHead>Rol</TableHead>
               <TableHead>Estado</TableHead>
+              <TableHead>Dashboard sensible</TableHead>
               <TableHead>Último Login</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
@@ -159,13 +178,13 @@ function Usuarios() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={7} className="text-center">
                   Cargando...
                 </TableCell>
               </TableRow>
             ) : usuarios.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-text-muted">
+                <TableCell colSpan={7} className="text-center text-text-muted">
                   No hay usuarios
                 </TableCell>
               </TableRow>
@@ -188,6 +207,23 @@ function Usuarios() {
                     <Badge variant={user.activo ? 'success' : 'default'}>
                       {user.activo ? 'Activo' : 'Inactivo'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {user.rol === 'admin' ? (
+                      <span className="text-sm text-text-muted">No aplica</span>
+                    ) : (
+                      <Checkbox
+                        checked={!!user.restringir_dashboard_sensible}
+                        disabled={toggleDashboardRestrictionMutation.isPending}
+                        onChange={(checked) => {
+                          toggleDashboardRestrictionMutation.mutate({
+                            id: user.id,
+                            restringir_dashboard_sensible: checked,
+                          })
+                        }}
+                        label="Restringir"
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="text-text-muted text-sm">
                     {formatDate(user.ultimo_login)}

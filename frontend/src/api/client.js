@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
@@ -22,6 +22,21 @@ client.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
+// Token refresh state - prevents concurrent refresh attempts
+let isRefreshing = false
+let failedQueue = []
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+    } else {
+      resolve(token)
+    }
+  })
+  failedQueue = []
+}
+
 // Response interceptor - handle token refresh
 client.interceptors.response.use(
   (response) => response,
@@ -30,11 +45,25 @@ client.interceptors.response.use(
 
     // If 401 and not already retrying, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // If already refreshing, queue this request to retry after refresh completes
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        }).then((token) => {
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return client(originalRequest)
+        }).catch((err) => {
+          return Promise.reject(err)
+        })
+      }
+
       originalRequest._retry = true
 
       const refreshToken = useAuthStore.getState().refreshToken
 
       if (refreshToken) {
+        isRefreshing = true
+
         try {
           const response = await axios.post(`${API_URL}/api/auth/refresh`, null, {
             headers: {
@@ -45,16 +74,19 @@ client.interceptors.response.use(
           const { access_token } = response.data
           useAuthStore.getState().setAccessToken(access_token)
 
+          processQueue(null, access_token)
+
           originalRequest.headers.Authorization = `Bearer ${access_token}`
           return client(originalRequest)
         } catch (refreshError) {
+          processQueue(refreshError, null)
           useAuthStore.getState().logout()
-          window.location.href = '/login'
           return Promise.reject(refreshError)
+        } finally {
+          isRefreshing = false
         }
       } else {
         useAuthStore.getState().logout()
-        window.location.href = '/login'
       }
     }
 
@@ -77,7 +109,7 @@ export const api = {
 
   // Dashboard
   dashboard: {
-    getStats: () => client.get('/dashboard/stats'),
+    getStats: (params) => client.get('/dashboard/stats', { params }),
   },
 
   // Facturadores
@@ -126,7 +158,7 @@ export const api = {
         headers: { 'Content-Type': 'multipart/form-data' },
       }),
     bulkDelete: (ids) => client.delete('/facturas', { data: { ids } }),
-    sendEmail: (id) => client.post(`/facturas/${id}/enviar-email`),
+    sendEmail: (id, data) => client.post(`/facturas/${id}/enviar-email`, data),
   },
 
   // Lotes
@@ -134,7 +166,15 @@ export const api = {
     list: (params) => client.get('/lotes', { params }),
     get: (id) => client.get(`/lotes/${id}`),
     facturar: (id, data) => client.post(`/lotes/${id}/facturar`, data),
+    sendEmails: (id, data) => client.post(`/lotes/${id}/enviar-emails`, data),
+    emailPreview: (id) => client.get(`/lotes/${id}/email-preview`),
+    comprobantesZipPreview: (id) => client.get(`/lotes/${id}/comprobantes-zip-preview`),
+    generarComprobantesZip: (id) => client.post(`/lotes/${id}/comprobantes-zip`),
     delete: (id) => client.delete(`/lotes/${id}`),
+  },
+
+  downloads: {
+    getByTask: (taskId) => client.get(`/downloads/${taskId}`, { responseType: 'blob' }),
   },
 
   // Jobs
@@ -168,5 +208,11 @@ export const api = {
     updateConfig: (data) => client.put('/email/config', data),
     testConnection: () => client.post('/email/test'),
     testSend: (data) => client.post('/email/test-send', data),
+    preview: (data) => client.post('/email/preview', data),
+  },
+
+  // Ayuda
+  help: {
+    getImportCsvGuide: () => client.get('/help/guia-importacion-csv', { responseType: 'text' }),
   },
 }

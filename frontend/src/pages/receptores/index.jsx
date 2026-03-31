@@ -18,10 +18,12 @@ import {
 import { formatCUIT } from '@/lib/utils'
 import { toast } from '@/stores/toastStore'
 import ImportModal from './ImportModal'
+import { CONDICIONES_IVA, getCondicionIvaLabel } from '@/constants/condicionesIva'
 
 function Receptores() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingReceptor, setEditingReceptor] = useState(null)
@@ -30,14 +32,14 @@ function Receptores() {
     doc_nro: '',
     razon_social: '',
     direccion: '',
-    condicion_iva: '',
+    condicion_iva_id: null,
     email: '',
   })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['receptores', search],
+    queryKey: ['receptores', search, page],
     queryFn: async () => {
-      const response = await api.receptores.list({ search, per_page: 100 })
+      const response = await api.receptores.list({ search, page, per_page: 20 })
       return response.data
     },
   })
@@ -78,6 +80,10 @@ function Receptores() {
   })
 
   const receptores = data?.items || []
+  const currentPage = data?.page || page
+  const totalPages = data?.pages || 1
+  const totalItems = data?.total || 0
+  const showPagination = totalItems > 0
 
   const handleOpenModal = (receptor = null) => {
     if (receptor) {
@@ -87,7 +93,7 @@ function Receptores() {
         doc_nro: receptor.doc_nro,
         razon_social: receptor.razon_social,
         direccion: receptor.direccion || '',
-        condicion_iva: receptor.condicion_iva || '',
+        condicion_iva_id: receptor.condicion_iva_id || null,
         email: receptor.email || '',
       })
     } else {
@@ -97,7 +103,7 @@ function Receptores() {
         doc_nro: '',
         razon_social: '',
         direccion: '',
-        condicion_iva: '',
+        condicion_iva_id: null,
         email: '',
       })
     }
@@ -122,21 +128,32 @@ function Receptores() {
   }
 
   const handleConsultarCuit = async () => {
-    if (!formData.doc_nro) return
+    if (!formData.doc_nro) {
+      toast.warning('CUIT requerido', 'Ingresá un CUIT/CUIL para consultar en ARCA')
+      return
+    }
 
     try {
       const response = await api.receptores.consultarCuit(formData.doc_nro)
       if (response.data.success && response.data.data) {
-        const data = response.data.data
-        setFormData({
-          ...formData,
-          razon_social: data.razon_social || formData.razon_social,
-          direccion: data.direccion || formData.direccion,
-          condicion_iva: data.condicion_iva || formData.condicion_iva,
-        })
+        const padronData = response.data.data
+        // Convertir nombre de condición IVA a ID
+        const condicionIvaFromName = (nombre) => {
+          const found = CONDICIONES_IVA.find(c => c.label.toLowerCase() === nombre?.toLowerCase())
+          return found ? found.id : null
+        }
+        setFormData((prev) => ({
+          ...prev,
+          razon_social: padronData.razon_social || prev.razon_social,
+          direccion: padronData.direccion || prev.direccion,
+          condicion_iva_id: condicionIvaFromName(padronData.condicion_iva) || prev.condicion_iva_id,
+        }))
+        toast.success('Datos encontrados', 'Se completaron los datos del receptor desde ARCA')
+      } else {
+        toast.warning('Sin resultados', response.data.error || 'No se encontraron datos para ese CUIT')
       }
     } catch (error) {
-      console.error('Error al consultar CUIT:', error)
+      toast.error('Error al consultar CUIT', error.response?.data?.error || 'No se pudo consultar en ARCA')
     }
   }
 
@@ -150,7 +167,10 @@ function Receptores() {
             type="text"
             placeholder="Buscar por nombre o CUIT..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             className="h-10 w-full rounded-md border border-border bg-card pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -166,6 +186,31 @@ function Receptores() {
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card">
+        {showPagination && (
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <span className="text-sm text-text-secondary">
+              Página {currentPage} de {totalPages} · Mostrando {receptores.length} de {totalItems} receptores
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow>
@@ -204,7 +249,7 @@ function Receptores() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{receptor.condicion_iva || '-'}</TableCell>
+                  <TableCell>{getCondicionIvaLabel(receptor.condicion_iva_id)}</TableCell>
                   <TableCell>{receptor.email || '-'}</TableCell>
                   <TableCell>
                     <Badge variant={receptor.activo ? 'success' : 'default'}>
@@ -238,6 +283,32 @@ function Receptores() {
             )}
           </TableBody>
         </Table>
+
+        {showPagination && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <span className="text-sm text-text-secondary">
+              Página {currentPage} de {totalPages} · Mostrando {receptores.length} de {totalItems} receptores
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal */}
@@ -263,17 +334,19 @@ function Receptores() {
         }
       >
         <div className="space-y-4">
-          <div className="flex items-end gap-3">
-            <Input
-              label="CUIT/CUIL"
-              placeholder="20-12345678-9"
-              value={formData.doc_nro}
-              onChange={(e) => setFormData({ ...formData, doc_nro: e.target.value })}
-              className="flex-1"
-            />
-            <Button variant="secondary" onClick={handleConsultarCuit}>
-              Buscar
-            </Button>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-primary">CUIT/CUIL</label>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+              <Input
+                placeholder="20-12345678-9"
+                value={formData.doc_nro}
+                onChange={(e) => setFormData({ ...formData, doc_nro: e.target.value })}
+                className="w-full"
+              />
+              <Button variant="secondary" className="h-10 shrink-0 px-5" onClick={handleConsultarCuit}>
+                Buscar
+              </Button>
+            </div>
           </div>
 
           <Input
@@ -292,14 +365,13 @@ function Receptores() {
 
           <Select
             label="Condición IVA"
-            value={formData.condicion_iva}
-            onChange={(e) => setFormData({ ...formData, condicion_iva: e.target.value })}
+            value={formData.condicion_iva_id || ''}
+            onChange={(e) => setFormData({ ...formData, condicion_iva_id: e.target.value ? parseInt(e.target.value) : null })}
           >
             <option value="">Seleccionar...</option>
-            <option value="IVA Responsable Inscripto">IVA Responsable Inscripto</option>
-            <option value="Responsable Monotributo">Responsable Monotributo</option>
-            <option value="Consumidor Final">Consumidor Final</option>
-            <option value="IVA Sujeto Exento">IVA Sujeto Exento</option>
+            {CONDICIONES_IVA.map(c => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
           </Select>
 
           <Input

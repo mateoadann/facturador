@@ -203,6 +203,44 @@ class TestEmailTestSend:
         mock_send.assert_called_once()
 
 
+class TestEmailPreview:
+    """Tests para POST /api/email/preview."""
+
+    def test_preview_devuelve_subject_y_html(self, client, auth_headers):
+        resp = client.post('/api/email/preview', headers=auth_headers, json={
+            'email_asunto': 'Factura {comprobante} - {facturador}',
+            'email_mensaje': 'Linea 1\nLinea 2',
+            'email_despedida': 'Saludos',
+        })
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['subject'] == 'Factura Factura A 00001-00001234 - Empresa Demo SRL'
+        assert '<html>' in data['html']
+        assert data['sample_data']['facturador'] == 'Empresa Demo SRL'
+        assert data['sample_data']['receptor'] == 'Cliente Ejemplo SA'
+        assert data['sample_data']['comprobante'] == 'Factura A 00001-00001234'
+
+    def test_preview_reemplaza_placeholders_y_saltos(self, client, auth_headers):
+        resp = client.post('/api/email/preview', headers=auth_headers, json={
+            'email_asunto': 'Comprobante {comprobante} de {facturador}',
+            'email_mensaje': 'Primer renglon\nSegundo renglon',
+        })
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['subject'] == 'Comprobante Factura A 00001-00001234 de Empresa Demo SRL'
+        assert '<p>Primer renglon<br>Segundo renglon</p>' in data['html']
+
+    def test_operator_no_puede_ver_preview(self, client, operator_headers):
+        resp = client.post('/api/email/preview', headers=operator_headers, json={})
+        assert resp.status_code == 403
+
+    def test_viewer_no_puede_ver_preview(self, client, viewer_headers):
+        resp = client.post('/api/email/preview', headers=viewer_headers, json={})
+        assert resp.status_code == 403
+
+
 class TestEnviarEmailFactura:
     """Tests para POST /api/facturas/:id/enviar-email."""
 
@@ -218,7 +256,10 @@ class TestEnviarEmailFactura:
         assert resp.status_code == 202
         data = resp.get_json()
         assert 'receptor_email' in data
-        mock_task.delay.assert_called_once_with(str(factura_autorizada.id))
+        mock_task.delay.assert_called_once_with(
+            str(factura_autorizada.id),
+            str(factura_autorizada.tenant_id),
+        )
 
     def test_factura_no_autorizada_falla(self, client, auth_headers, db,
                                          email_config, tenant, facturador, receptor_con_email):
@@ -279,19 +320,25 @@ class TestEmailPersonalizacion:
             'from_email': 'noreply@test.com',
             'email_asunto': 'Factura {comprobante} - {facturador}',
             'email_mensaje': 'Le enviamos su factura.\nDatos bancarios: CBU 123456',
-            'email_saludo': 'Atentamente, El equipo',
+            'email_saludo': 'Hola {receptor},',
+            'email_despedida': 'Atentamente, El equipo',
+            'email_firma': 'Juan Pérez\nContador',
         })
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['email_asunto'] == 'Factura {comprobante} - {facturador}'
         assert data['email_mensaje'] == 'Le enviamos su factura.\nDatos bancarios: CBU 123456'
-        assert data['email_saludo'] == 'Atentamente, El equipo'
+        assert data['email_saludo'] == 'Hola {receptor},'
+        assert data['email_despedida'] == 'Atentamente, El equipo'
+        assert data['email_firma'] == 'Juan Pérez\nContador'
 
     def test_get_config_con_personalizacion(self, client, auth_headers, db, email_config):
         """GET config devuelve campos de personalización."""
         email_config.email_asunto = 'Asunto custom'
         email_config.email_mensaje = 'Mensaje custom'
         email_config.email_saludo = 'Saludo custom'
+        email_config.email_despedida = 'Despedida custom'
+        email_config.email_firma = 'Firma custom'
         db.session.commit()
 
         resp = client.get('/api/email/config', headers=auth_headers)
@@ -300,6 +347,8 @@ class TestEmailPersonalizacion:
         assert data['email_asunto'] == 'Asunto custom'
         assert data['email_mensaje'] == 'Mensaje custom'
         assert data['email_saludo'] == 'Saludo custom'
+        assert data['email_despedida'] == 'Despedida custom'
+        assert data['email_firma'] == 'Firma custom'
 
     def test_campos_vacios_se_guardan_como_null(self, client, auth_headers, email_config):
         """Campos vacíos se guardan como NULL (usa defaults)."""
@@ -310,12 +359,16 @@ class TestEmailPersonalizacion:
             'email_asunto': '',
             'email_mensaje': '   ',
             'email_saludo': '',
+            'email_despedida': '',
+            'email_firma': '  ',
         })
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['email_asunto'] is None
         assert data['email_mensaje'] is None
         assert data['email_saludo'] is None
+        assert data['email_despedida'] is None
+        assert data['email_firma'] is None
 
     def test_build_subject_custom(self, app):
         """Asunto custom reemplaza {comprobante} y {facturador}."""
@@ -340,9 +393,10 @@ class TestEmailPersonalizacion:
             assert result == 'Comprobante 00001-00000042 - Mi Empresa SRL'
 
     def test_build_body_con_mensaje_custom(self, app, factura_autorizada, db, email_config):
-        """Body usa mensaje y saludo custom cuando están configurados."""
+        """Body usa mensaje, despedida y firma custom cuando están configurados."""
         email_config.email_mensaje = 'Mensaje personalizado.\nSegunda línea.'
-        email_config.email_saludo = 'Cordialmente'
+        email_config.email_despedida = 'Cordialmente'
+        email_config.email_firma = 'Juan Pérez\nContador'
         db.session.commit()
 
         with app.app_context():
@@ -353,6 +407,8 @@ class TestEmailPersonalizacion:
         assert 'Segunda línea.' in html
         assert '<br>' in html  # Saltos de línea convertidos
         assert 'Cordialmente' in html
+        assert 'Juan Pérez' in html
+        assert 'Contador' in html
 
     def test_build_body_defaults(self, app, factura_autorizada, email_config):
         """Body usa defaults cuando no hay personalización."""
@@ -362,6 +418,51 @@ class TestEmailPersonalizacion:
 
         assert 'comprobante electrónico' in html
         assert 'Saludos cordiales' in html
+        assert 'Estimado/a' in html  # Default greeting
+        assert 'AD' in html  # ADAIN footer
+
+    def test_build_body_saludo_variable_interpolation(self, app, factura_autorizada, email_config):
+        """Saludo (greeting) interpolates {receptor}, {facturador}, {comprobante}."""
+        email_config.email_saludo = 'Hola {receptor}, tu {comprobante} de {facturador}'
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(
+                factura_autorizada, 'Test SRL', email_config,
+                comprobante_str='Factura A 00001-00000001'
+            )
+
+        assert 'Hola Receptor Email SA' in html
+        assert 'tu Factura A 00001-00000001' in html
+        assert 'de Test SRL' in html
+
+    def test_build_body_no_firma_omitted(self, app, factura_autorizada, email_config):
+        """When firma is None, no firma section appears."""
+        email_config.email_firma = None
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(factura_autorizada, 'Test SRL', email_config)
+
+        # firma section uses color: #475569; style - should not be present
+        assert '#475569' not in html
+
+    def test_build_body_no_facturador_header(self, app, factura_autorizada, email_config):
+        """The email body must NOT contain the facturador name as a header."""
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(factura_autorizada, 'Test SRL', email_config)
+
+        # Old template had <h2> with facturador name and blue border
+        assert '<h2' not in html
+        assert 'border-bottom: 3px solid' not in html
+
+    def test_build_body_adain_footer(self, app, factura_autorizada, email_config):
+        """Footer must contain ADAIN AI Solutions with link to adain.dev."""
+        with app.app_context():
+            from app.services.email_service import _build_comprobante_email_body
+            html = _build_comprobante_email_body(factura_autorizada, 'Test SRL', email_config)
+
+        assert 'adain.dev' in html
+        assert 'AI Solutions' in html
 
 
 class TestEmailServiceUnit:
@@ -396,3 +497,15 @@ class TestEmailServiceUnit:
 
         assert result['success'] is False
         assert 'inválidas' in result['error'].lower() or 'invalid' in result['error'].lower()
+
+    @patch('app.services.email_service.send_email')
+    @patch('app.services.comprobante_pdf.html_to_pdf_bytes', return_value=b'%PDF-test')
+    @patch('app.services.comprobante_renderer.render_comprobante_html', return_value='<html></html>')
+    def test_send_comprobante_email_usa_filename_estandar(self, _mock_html, _mock_pdf, mock_send_email, app, factura_autorizada, email_config):
+        with app.app_context():
+            from app.services.email_service import send_comprobante_email
+            send_comprobante_email(factura_autorizada)
+
+        attachments = mock_send_email.call_args.kwargs['attachments']
+        attachment_filename = attachments[0][0]
+        assert attachment_filename == '20123456789_001_00001_00000001.pdf'

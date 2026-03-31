@@ -22,7 +22,9 @@ class EmailConfig(db.Model):
     # Personalización del email
     email_asunto = db.Column(db.String(500))
     email_mensaje = db.Column(db.Text)
-    email_saludo = db.Column(db.String(500))
+    email_saludo = db.Column(db.String(500))       # Greeting (e.g. "Estimado/a {receptor},")
+    email_despedida = db.Column(db.String(500))     # Farewell (e.g. "Saludos cordiales")
+    email_firma = db.Column(db.Text)                # Signature block
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
@@ -45,6 +47,8 @@ class EmailConfig(db.Model):
             'email_asunto': self.email_asunto,
             'email_mensaje': self.email_mensaje,
             'email_saludo': self.email_saludo,
+            'email_despedida': self.email_despedida,
+            'email_firma': self.email_firma,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

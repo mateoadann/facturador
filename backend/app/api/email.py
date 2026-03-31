@@ -2,7 +2,11 @@ from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import EmailConfig
 from ..services.encryption import encrypt_certificate
-from ..services.email_service import test_smtp_connection, send_test_email
+from ..services.email_service import (
+    test_smtp_connection,
+    send_test_email,
+    build_email_preview,
+)
 from ..utils import permission_required
 from ..services.audit import log_action
 
@@ -47,6 +51,8 @@ def update_config():
     email_asunto = data.get('email_asunto', '').strip() or None
     email_mensaje = data.get('email_mensaje', '').strip() or None
     email_saludo = data.get('email_saludo', '').strip() or None
+    email_despedida = data.get('email_despedida', '').strip() or None
+    email_firma = data.get('email_firma', '').strip() or None
 
     if config:
         config.smtp_host = data['smtp_host']
@@ -59,6 +65,8 @@ def update_config():
         config.email_asunto = email_asunto
         config.email_mensaje = email_mensaje
         config.email_saludo = email_saludo
+        config.email_despedida = email_despedida
+        config.email_firma = email_firma
 
         if data.get('smtp_password'):
             config.smtp_password_encrypted = encrypt_certificate(
@@ -83,6 +91,8 @@ def update_config():
             email_asunto=email_asunto,
             email_mensaje=email_mensaje,
             email_saludo=email_saludo,
+            email_despedida=email_despedida,
+            email_firma=email_firma,
         )
         db.session.add(config)
 
@@ -128,3 +138,21 @@ def test_send():
         return jsonify({'success': True, 'message': 'Email de prueba enviado'}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@email_bp.route('/preview', methods=['POST'])
+@permission_required('email:configurar')
+def preview_email():
+    """Generar vista previa de email sin envio ni guardado de configuracion."""
+    data = request.get_json(silent=True) or {}
+
+    preview = build_email_preview(
+        email_asunto=data.get('email_asunto'),
+        email_mensaje=data.get('email_mensaje'),
+        email_saludo=data.get('email_saludo'),
+        email_despedida=data.get('email_despedida'),
+        email_firma=data.get('email_firma'),
+        from_name=data.get('from_name'),
+    )
+
+    return jsonify(preview), 200

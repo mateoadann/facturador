@@ -14,6 +14,7 @@ import {
   TableHead,
   TableCell,
   Modal,
+  DatePicker,
   Input,
   Select,
 } from '@/components/ui'
@@ -29,6 +30,8 @@ function Facturadores() {
     razon_social: '',
     direccion: '',
     condicion_iva: '',
+    ingresos_brutos: '',
+    fecha_inicio_actividades: '',
     punto_venta: '',
     ambiente: 'testing',
   })
@@ -107,6 +110,8 @@ function Facturadores() {
         razon_social: facturador.razon_social,
         direccion: facturador.direccion || '',
         condicion_iva: facturador.condicion_iva || '',
+        ingresos_brutos: facturador.ingresos_brutos || '',
+        fecha_inicio_actividades: facturador.fecha_inicio_actividades || '',
         punto_venta: facturador.punto_venta.toString(),
         ambiente: facturador.ambiente,
       })
@@ -117,6 +122,8 @@ function Facturadores() {
         razon_social: '',
         direccion: '',
         condicion_iva: '',
+        ingresos_brutos: '',
+        fecha_inicio_actividades: '',
         punto_venta: '',
         ambiente: 'testing',
       })
@@ -360,6 +367,22 @@ function Facturadores() {
               placeholder="1"
               value={formData.punto_venta}
               onChange={(e) => setFormData({ ...formData, punto_venta: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Ingresos Brutos"
+              placeholder="901-123456-7"
+              value={formData.ingresos_brutos}
+              onChange={(e) => setFormData({ ...formData, ingresos_brutos: e.target.value })}
+              required
+            />
+
+            <DatePicker
+              label="Fecha de Inicio de Actividades"
+              value={formData.fecha_inicio_actividades}
+              onChange={(v) => setFormData({ ...formData, fecha_inicio_actividades: v })}
             />
           </div>
 

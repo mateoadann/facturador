@@ -25,6 +25,8 @@ import { toast } from '@/stores/toastStore'
 function Facturar() {
   const queryClient = useQueryClient()
   const [selectedLote, setSelectedLote] = useState(null)
+  const [page, setPage] = useState(1)
+  const perPage = 20
   const [selectedFacturas, setSelectedFacturas] = useState([])
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [isFacturarOpen, setIsFacturarOpen] = useState(false)
@@ -41,13 +43,20 @@ function Facturar() {
   })
 
   // Fetch facturas del lote seleccionado
+  // During billing, show all states so user sees facturas getting authorized in real-time
+  const isProcessing = !!activeTaskId
+  const estadosFilter = isProcessing ? undefined : 'pendiente,borrador,error'
+
   const { data: facturasData, isLoading: isLoadingFacturas } = useQuery({
-    queryKey: ['facturas', { lote_id: selectedLote }],
+    queryKey: ['facturas', { lote_id: selectedLote, page, per_page: perPage, estados: estadosFilter }],
     queryFn: async () => {
-      const response = await api.facturas.list({
+      const params = {
         lote_id: selectedLote,
-        estados: 'pendiente,borrador,error',
-      })
+        page,
+        per_page: perPage,
+      }
+      if (estadosFilter) params.estados = estadosFilter
+      const response = await api.facturas.list(params)
       return response.data
     },
     enabled: !!selectedLote,
@@ -57,6 +66,14 @@ function Facturar() {
   const { data: jobStatus } = useJobStatus(activeTaskId, {
     enabled: !!activeTaskId,
   })
+
+  // Refresh table as facturas get processed
+  const lastProgress = jobStatus?.progress?.current
+  useEffect(() => {
+    if (isProcessing && lastProgress != null) {
+      queryClient.invalidateQueries(['facturas'])
+    }
+  }, [isProcessing, lastProgress, queryClient])
 
   // Mutations
   const deleteFacturasMutation = useMutation({
@@ -91,6 +108,11 @@ function Facturar() {
       setSelectedFacturas([])
     }
   }, [lotes, lotesData, selectedLote])
+
+  useEffect(() => {
+    setPage(1)
+    setSelectedFacturas([])
+  }, [selectedLote])
 
   const getEstadoBadge = (estado, factura) => {
     if (estado === 'error') {
@@ -147,7 +169,7 @@ function Facturar() {
         const result = jobStatus.result
         toast.success(
           'Lote procesado',
-          result ? `${result.ok} autorizadas, ${result.errores} con error` : 'Facturación completada'
+          result ? `${result.ok} autorizadas, ${result.errors} con error` : 'Facturación completada'
         )
       } else {
         toast.error('Error al facturar', jobStatus.error || 'Ocurrió un error al procesar el lote')
@@ -294,6 +316,32 @@ function Facturar() {
             )}
           </TableBody>
         </Table>
+
+        {selectedLote && (facturasData?.total || 0) > 0 && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <span className="text-sm text-text-secondary">
+              Página {facturasData?.page || 1} de {facturasData?.pages || 1} · {facturasData?.total || 0} facturas
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={(facturasData?.page || 1) <= 1}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={(facturasData?.page || 1) >= (facturasData?.pages || 1)}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modals */}

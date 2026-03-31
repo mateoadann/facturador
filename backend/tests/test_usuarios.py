@@ -1,6 +1,3 @@
-import pytest
-
-
 class TestListUsuarios:
     def test_admin_can_list(self, client, auth_headers):
         response = client.get('/api/usuarios', headers=auth_headers)
@@ -73,6 +70,27 @@ class TestCreateUsuario:
         })
         assert response.status_code == 403
 
+    def test_create_operator_with_dashboard_restriction(self, client, auth_headers):
+        response = client.post('/api/usuarios', headers=auth_headers, json={
+            'email': 'restricted@test.com',
+            'password': 'password123',
+            'nombre': 'Restricted User',
+            'rol': 'operator',
+            'restringir_dashboard_sensible': True,
+        })
+        assert response.status_code == 201
+        assert response.get_json()['restringir_dashboard_sensible'] is True
+
+    def test_create_admin_cannot_enable_dashboard_restriction(self, client, auth_headers):
+        response = client.post('/api/usuarios', headers=auth_headers, json={
+            'email': 'admin2@test.com',
+            'password': 'password123',
+            'nombre': 'Admin 2',
+            'rol': 'admin',
+            'restringir_dashboard_sensible': True,
+        })
+        assert response.status_code == 400
+
 
 class TestUpdateUsuario:
     def test_update_nombre(self, client, auth_headers, operator_user):
@@ -101,6 +119,41 @@ class TestUpdateUsuario:
             json={'nombre': 'No existe'}
         )
         assert response.status_code == 404
+
+    def test_update_dashboard_restriction_for_operator(self, client, auth_headers, operator_user):
+        response = client.put(
+            f'/api/usuarios/{operator_user.id}',
+            headers=auth_headers,
+            json={'restringir_dashboard_sensible': True}
+        )
+        assert response.status_code == 200
+        assert response.get_json()['restringir_dashboard_sensible'] is True
+
+    def test_admin_cannot_have_dashboard_restriction(self, client, auth_headers, admin_user):
+        response = client.put(
+            f'/api/usuarios/{admin_user.id}',
+            headers=auth_headers,
+            json={'restringir_dashboard_sensible': True}
+        )
+        assert response.status_code == 400
+
+    def test_changing_role_to_admin_resets_dashboard_restriction(self, client, auth_headers, operator_user):
+        first = client.put(
+            f'/api/usuarios/{operator_user.id}',
+            headers=auth_headers,
+            json={'restringir_dashboard_sensible': True}
+        )
+        assert first.status_code == 200
+        assert first.get_json()['restringir_dashboard_sensible'] is True
+
+        second = client.put(
+            f'/api/usuarios/{operator_user.id}',
+            headers=auth_headers,
+            json={'rol': 'admin'}
+        )
+        assert second.status_code == 200
+        assert second.get_json()['rol'] == 'admin'
+        assert second.get_json()['restringir_dashboard_sensible'] is False
 
 
 class TestToggleActive:

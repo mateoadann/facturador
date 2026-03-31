@@ -60,6 +60,12 @@ class Factura(db.Model):
     email_enviado_at = db.Column(db.DateTime)
     email_error = db.Column(db.String(500))
 
+    # Email override (from CSV)
+    emails_cc = db.Column(db.String(1000))
+    email_asunto = db.Column(db.String(500))
+    email_mensaje = db.Column(db.Text)
+    email_firma = db.Column(db.Text)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -101,6 +107,10 @@ class Factura(db.Model):
             'email_enviado': self.email_enviado or False,
             'email_enviado_at': self.email_enviado_at.isoformat() if self.email_enviado_at else None,
             'email_error': self.email_error,
+            'emails_cc': self.emails_cc,
+            'email_asunto': self.email_asunto,
+            'email_mensaje': self.email_mensaje,
+            'email_firma': self.email_firma,
             'created_at': self.created_at.isoformat(),
             'facturador': self.facturador.to_dict() if self.facturador else None,
             'receptor': self.receptor.to_dict() if self.receptor else None,
@@ -120,6 +130,7 @@ class FacturaItem(db.Model):
     precio_unitario = db.Column(db.Numeric(15, 4), nullable=False)
     alicuota_iva_id = db.Column(db.Integer, default=5)  # 5 = 21%
     importe_iva = db.Column(db.Numeric(15, 2), default=Decimal('0'))
+    importe_neto = db.Column(db.Numeric(15, 2), default=Decimal('0'))
     subtotal = db.Column(db.Numeric(15, 2), nullable=False)
     orden = db.Column(db.Integer, default=0)
 
@@ -135,6 +146,7 @@ class FacturaItem(db.Model):
             'precio_unitario': float(self.precio_unitario),
             'alicuota_iva_id': self.alicuota_iva_id,
             'importe_iva': float(self.importe_iva) if self.importe_iva else 0,
+            'importe_neto': float(self.importe_neto) if self.importe_neto else 0,
             'subtotal': float(self.subtotal),
             'orden': self.orden
         }

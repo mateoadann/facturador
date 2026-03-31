@@ -13,6 +13,7 @@ class Usuario(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     nombre = db.Column(db.String(255))
     rol = db.Column(db.String(50), default='operator')
+    restringir_dashboard_sensible = db.Column(db.Boolean, default=False)
     activo = db.Column(db.Boolean, default=True)
     ultimo_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -40,6 +41,7 @@ class Usuario(db.Model):
             'email': self.email,
             'nombre': self.nombre,
             'rol': self.rol,
+            'restringir_dashboard_sensible': self.restringir_dashboard_sensible,
             'activo': self.activo,
             'ultimo_login': self.ultimo_login.isoformat() if self.ultimo_login else None,
             'created_at': self.created_at.isoformat()

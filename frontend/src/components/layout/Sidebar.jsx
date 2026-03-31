@@ -15,10 +15,14 @@ import {
   ClipboardList,
   KeyRound,
   Mail,
+  LifeBuoy,
+  Moon,
+  Sun,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/stores/sidebarStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { useLogout } from '@/hooks/useAuth'
 import ChangePasswordModal from '@/components/auth/ChangePasswordModal'
 
@@ -46,6 +50,7 @@ const navItems = [
     items: [
       { icon: UserCog, label: 'Usuarios', href: '/usuarios', permission: 'usuarios:ver' },
       { icon: ClipboardList, label: 'Auditoría', href: '/auditoria', permission: 'auditoria:ver' },
+      { icon: LifeBuoy, label: 'Ayuda', href: '/ayuda', permission: 'dashboard:ver' },
     ],
   },
 ]
@@ -72,6 +77,8 @@ function NavItem({ icon: Icon, label, href, isCollapsed }) {
 function Sidebar() {
   const { isCollapsed, toggle } = useSidebarStore()
   const { user, tenant } = useAuthStore()
+  const darkMode = useThemeStore((s) => s.darkMode)
+  const toggleDarkMode = useThemeStore((s) => s.toggleDarkMode)
   const { mutate: logout } = useLogout()
   const permisos = user?.permisos || []
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
@@ -107,7 +114,7 @@ function Sidebar() {
           <img
             src="/factura.png"
             alt="Facturador"
-            className="h-10 w-10 rounded-lg object-cover"
+            className="h-10 w-10 rounded-lg object-cover dark:brightness-0 dark:invert dark:opacity-60"
           />
           {!isCollapsed && (
             <>
@@ -151,6 +158,42 @@ function Sidebar() {
                         isCollapsed={isCollapsed}
                       />
                     ))}
+                    {item.group === 'CONFIGURACIÓN' && (
+                      <button
+                        onClick={toggleDarkMode}
+                        role="switch"
+                        aria-checked={darkMode}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+                          isCollapsed && 'justify-center px-0'
+                        )}
+                        title={darkMode ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+                      >
+                        {darkMode ? (
+                          <Moon className="h-5 w-5 flex-shrink-0" />
+                        ) : (
+                          <Sun className="h-5 w-5 flex-shrink-0" />
+                        )}
+                        {!isCollapsed && (
+                          <>
+                            <span className="flex-1 text-left">Modo oscuro</span>
+                            <span
+                              className={cn(
+                                'relative h-6 w-11 rounded-full transition-colors',
+                                darkMode
+                                  ? 'bg-primary'
+                                  : 'bg-border'
+                              )}
+                            >
+                              <span
+                                className="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform"
+                                style={{ transform: darkMode ? 'translateX(20px)' : 'translateX(0)' }}
+                              />
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               )

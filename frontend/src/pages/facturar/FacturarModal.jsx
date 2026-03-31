@@ -20,7 +20,12 @@ function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
   })
 
   const facturadoresDisponibles = (facturadoresData?.items || []).filter(
-    (facturador) => facturador.activo && facturador.tiene_certificados
+    (facturador) => (
+      facturador.activo
+      && facturador.tiene_certificados
+      && !!facturador.ingresos_brutos
+      && !!facturador.fecha_inicio_actividades
+    )
   )
 
   const facturarMutation = useMutation({
@@ -149,7 +154,7 @@ function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
 
         {loteId && facturadoresDisponibles.length === 0 && (
           <div className="rounded-md bg-warning-light p-3 text-sm text-warning-foreground">
-            No hay facturadores activos con certificados cargados para seleccionar.
+            No hay facturadores activos y completos (certificados, ingresos brutos y fecha de inicio) para seleccionar.
           </div>
         )}
 

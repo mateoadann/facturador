@@ -1,3 +1,5 @@
+from datetime import date, datetime
+
 from flask import Blueprint, request, jsonify, g
 from ..extensions import db
 from ..models import Facturador
@@ -6,6 +8,22 @@ from ..utils import permission_required
 from ..services.audit import log_action
 
 facturadores_bp = Blueprint('facturadores', __name__)
+
+
+def _parse_fecha_inicio_actividades(raw_value):
+    if raw_value in (None, ''):
+        return None
+
+    if isinstance(raw_value, datetime):
+        return raw_value.date()
+
+    if isinstance(raw_value, date):
+        return raw_value
+
+    try:
+        return datetime.strptime(str(raw_value), '%Y-%m-%d').date()
+    except ValueError:
+        return None
 
 
 @facturadores_bp.route('', methods=['GET'])
@@ -58,10 +76,20 @@ def create_facturador():
     if not data:
         return jsonify({'error': 'Datos requeridos'}), 400
 
-    required_fields = ['cuit', 'razon_social', 'punto_venta']
+    required_fields = [
+        'cuit',
+        'razon_social',
+        'punto_venta',
+        'ingresos_brutos',
+        'fecha_inicio_actividades',
+    ]
     for field in required_fields:
         if not data.get(field):
             return jsonify({'error': f'Campo {field} es requerido'}), 400
+
+    fecha_inicio_actividades = _parse_fecha_inicio_actividades(data.get('fecha_inicio_actividades'))
+    if not fecha_inicio_actividades:
+        return jsonify({'error': 'fecha_inicio_actividades debe tener formato YYYY-MM-DD'}), 400
 
     ambiente = data.get('ambiente', 'testing')
 
@@ -82,6 +110,8 @@ def create_facturador():
         razon_social=data['razon_social'],
         direccion=data.get('direccion'),
         condicion_iva=data.get('condicion_iva'),
+        ingresos_brutos=data.get('ingresos_brutos'),
+        fecha_inicio_actividades=fecha_inicio_actividades,
         punto_venta=data['punto_venta'],
         ambiente=ambiente
     )
@@ -142,6 +172,13 @@ def update_facturador(facturador_id):
         facturador.direccion = data['direccion']
     if 'condicion_iva' in data:
         facturador.condicion_iva = data['condicion_iva']
+    if 'ingresos_brutos' in data:
+        facturador.ingresos_brutos = data['ingresos_brutos']
+    if 'fecha_inicio_actividades' in data:
+        fecha_inicio_actividades = _parse_fecha_inicio_actividades(data['fecha_inicio_actividades'])
+        if data['fecha_inicio_actividades'] not in (None, '') and not fecha_inicio_actividades:
+            return jsonify({'error': 'fecha_inicio_actividades debe tener formato YYYY-MM-DD'}), 400
+        facturador.fecha_inicio_actividades = fecha_inicio_actividades
     if 'punto_venta' in data:
         facturador.punto_venta = nuevo_punto_venta
     if 'ambiente' in data:

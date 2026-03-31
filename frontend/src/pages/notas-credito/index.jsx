@@ -66,8 +66,12 @@ function NotasCredito() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       const contentDisposition = response.headers?.['content-disposition'] || ''
-      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/) 
-      const fallback = `nota-credito-${nota.punto_venta || 0}-${nota.numero_comprobante || nota.id}.pdf`
+      const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
+      const cuit = String(nota.facturador?.cuit || '').replace(/\D/g, '').padStart(11, '0')
+      const tipo = String(nota.tipo_comprobante || 0).padStart(3, '0')
+      const ptoVta = String(nota.punto_venta || 0).padStart(5, '0')
+      const nro = String(nota.numero_comprobante || 0).padStart(8, '0')
+      const fallback = `${cuit}_${tipo}_${ptoVta}_${nro}.pdf`
       a.href = url
       a.download = fileNameMatch?.[1] || fallback
       document.body.appendChild(a)

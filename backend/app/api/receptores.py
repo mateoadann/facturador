@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, g
 import csv
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from ..extensions import db
 from ..models import Receptor, Facturador, Factura
 from ..services.encryption import decrypt_certificate
@@ -92,7 +93,7 @@ def create_receptor():
         doc_nro=doc_nro,
         razon_social=data['razon_social'],
         direccion=data.get('direccion'),
-        condicion_iva=data.get('condicion_iva'),
+        condicion_iva_id=data.get('condicion_iva_id'),
         email=data.get('email')
     )
 
@@ -154,8 +155,8 @@ def update_receptor(receptor_id):
         receptor.razon_social = data['razon_social']
     if 'direccion' in data:
         receptor.direccion = data['direccion']
-    if 'condicion_iva' in data:
-        receptor.condicion_iva = data['condicion_iva']
+    if 'condicion_iva_id' in data:
+        receptor.condicion_iva_id = data['condicion_iva_id']
     if 'email' in data:
         receptor.email = data['email']
     if 'activo' in data:
@@ -222,9 +223,9 @@ def import_receptores():
         receptor = existing_by_doc.get(row['doc_nro'])
         if receptor:
             receptor.razon_social = row['razon_social']
-            receptor.condicion_iva = row['condicion_iva']
             receptor.email = row['email']
             receptor.direccion = row['direccion']
+            receptor.condicion_iva_id = row.get('condicion_iva_id')
             receptor.activo = True
             actualizados += 1
         else:
@@ -233,7 +234,7 @@ def import_receptores():
                 doc_tipo=row['doc_tipo'],
                 doc_nro=row['doc_nro'],
                 razon_social=row['razon_social'],
-                condicion_iva=row['condicion_iva'],
+                condicion_iva_id=row.get('condicion_iva_id'),
                 email=row['email'],
                 direccion=row['direccion'],
                 activo=True
@@ -245,18 +246,25 @@ def import_receptores():
     procesados = len(rows) + len(errors)
     omitidos = len(errors)
 
-    db.session.flush()
-    log_action(
-        'receptor:importar',
-        recurso='receptor',
-        detalle={
-            'procesados': procesados,
-            'creados': creados,
-            'actualizados': actualizados,
-            'omitidos': omitidos
-        }
-    )
-    db.session.commit()
+    try:
+        db.session.flush()
+        log_action(
+            'receptor:importar',
+            recurso='receptor',
+            detalle={
+                'procesados': procesados,
+                'creados': creados,
+                'actualizados': actualizados,
+                'omitidos': omitidos
+            }
+        )
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Error de integridad en los datos: posible CUIT duplicado o dato inválido'}), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        return jsonify({'error': 'Error al guardar los receptores en la base de datos'}), 500
 
     return jsonify({
         'procesados': procesados,
@@ -302,9 +310,15 @@ def consultar_cuit():
 
         result = client.consultar_padron(cuit)
 
+        if not result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error') or 'No se encontraron datos para el CUIT consultado'
+            }), 404
+
         return jsonify({
             'success': True,
-            'data': result
+            'data': result.get('data', {})
         }), 200
 
     except Exception as e:

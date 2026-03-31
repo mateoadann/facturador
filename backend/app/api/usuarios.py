@@ -43,6 +43,7 @@ def create_usuario():
     password = data.get('password', '')
     nombre = data.get('nombre', '').strip()
     rol = data.get('rol', 'operator')
+    restringir_dashboard_sensible = data.get('restringir_dashboard_sensible', False)
 
     if not email or not password:
         return jsonify({'error': 'Email y contraseña son requeridos'}), 400
@@ -53,6 +54,12 @@ def create_usuario():
     if rol not in ROLE_PERMISSIONS:
         return jsonify({'error': f'Rol inválido. Opciones: {", ".join(ROLE_PERMISSIONS.keys())}'}), 400
 
+    if not isinstance(restringir_dashboard_sensible, bool):
+        return jsonify({'error': 'restringir_dashboard_sensible debe ser booleano'}), 400
+
+    if rol == 'admin' and restringir_dashboard_sensible:
+        return jsonify({'error': 'La restricción solo aplica a usuarios Operador o Solo lectura'}), 400
+
     existing = Usuario.query.filter_by(tenant_id=g.tenant_id, email=email).first()
     if existing:
         return jsonify({'error': 'Ya existe un usuario con ese email'}), 400
@@ -62,13 +69,18 @@ def create_usuario():
         email=email,
         nombre=nombre,
         rol=rol,
+        restringir_dashboard_sensible=restringir_dashboard_sensible,
         activo=True
     )
     usuario.set_password(password)
 
     db.session.add(usuario)
     log_action('usuario:crear', recurso='usuario', recurso_id=usuario.id,
-               detalle={'email': email, 'rol': rol})
+               detalle={
+                   'email': email,
+                   'rol': rol,
+                   'restringir_dashboard_sensible': restringir_dashboard_sensible,
+               })
     db.session.commit()
 
     return jsonify(usuario.to_dict()), 201
@@ -105,6 +117,17 @@ def update_usuario(usuario_id):
         if usuario.id == g.current_user.id and data['rol'] != usuario.rol:
             return jsonify({'error': 'No podés cambiar tu propio rol'}), 400
         usuario.rol = data['rol']
+        if usuario.rol == 'admin':
+            usuario.restringir_dashboard_sensible = False
+
+    if 'restringir_dashboard_sensible' in data:
+        value = data.get('restringir_dashboard_sensible')
+        if not isinstance(value, bool):
+            return jsonify({'error': 'restringir_dashboard_sensible debe ser booleano'}), 400
+        target_role = data.get('rol', usuario.rol)
+        if target_role == 'admin' and value:
+            return jsonify({'error': 'La restricción solo aplica a usuarios Operador o Solo lectura'}), 400
+        usuario.restringir_dashboard_sensible = value
     if 'password' in data and data['password']:
         if len(data['password']) < 8:
             return jsonify({'error': 'La contraseña debe tener al menos 8 caracteres'}), 400
@@ -150,3 +173,4 @@ def list_roles():
         }
 
     return jsonify({'roles': roles}), 200
+
