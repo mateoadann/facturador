@@ -238,7 +238,7 @@ function Receptores() {
             ) : (
               receptores.map((receptor) => (
                 <TableRow key={receptor.id}>
-                  <TableCell className="font-mono">
+                  <TableCell className="font-mono whitespace-nowrap">
                     {formatCUIT(receptor.doc_nro)}
                   </TableCell>
                   <TableCell>
