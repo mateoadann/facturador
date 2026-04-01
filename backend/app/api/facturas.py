@@ -86,7 +86,10 @@ def list_facturas():
     if fecha_hasta:
         query = query.filter(Factura.fecha_emision <= fecha_hasta)
 
-    pagination = query.order_by(Factura.created_at.desc()).paginate(
+    pagination = query.order_by(
+        Factura.fecha_emision.desc(),
+        Factura.numero_comprobante.desc().nullslast(),
+    ).paginate(
         page=page, per_page=per_page, error_out=False
     )
 

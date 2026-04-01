@@ -47,6 +47,8 @@ const DatePicker = forwardRef(
     const inputRef = useRef(null)
     const dpRef = useRef(null)
     const isInternalRef = useRef(false)
+    const onChangeRef = useRef(onChange)
+    onChangeRef.current = onChange
 
     // Merge forwarded ref with internal ref
     const setRef = (el) => {
@@ -76,11 +78,11 @@ const DatePicker = forwardRef(
         onSelect: ({ date }) => {
           if (isInternalRef.current) return
           if (!date) {
-            onChange?.('')
+            onChangeRef.current?.('')
             return
           }
           const selected = Array.isArray(date) ? date[0] : date
-          onChange?.(toISO(selected, mode))
+          onChangeRef.current?.(toISO(selected, mode))
         },
       })
 
@@ -103,10 +105,16 @@ const DatePicker = forwardRef(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode])
 
-    // Sync value prop changes
+    // Sync value prop changes — only update when the ISO string differs
+    // from what the datepicker currently has selected
     useEffect(() => {
       const dp = dpRef.current
       if (!dp) return
+
+      const selectedDate = dp.selectedDates?.[0]
+      const currentISO = selectedDate ? toISO(selectedDate, mode) : ''
+
+      if ((value || '') === currentISO) return
 
       isInternalRef.current = true
 
@@ -117,7 +125,9 @@ const DatePicker = forwardRef(
           dp.selectDate(parsed, { silent: true })
         }
       } else {
-        dp.clear({ silent: true })
+        // Remove each selected date individually to avoid onSelect trigger
+        const dates = [...dp.selectedDates]
+        dates.forEach((d) => dp.unselectDate(d, { silent: true }))
       }
 
       isInternalRef.current = false
