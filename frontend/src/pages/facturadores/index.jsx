@@ -19,6 +19,7 @@ import {
   Select,
 } from '@/components/ui'
 import { formatCUIT } from '@/lib/utils'
+import { PermissionGate } from '@/components/auth/PermissionGate'
 
 function Facturadores() {
   const queryClient = useQueryClient()
@@ -171,11 +172,13 @@ function Facturadores() {
   return (
     <div className="space-y-6">
       {/* Actions */}
-      <div className="flex justify-end">
-        <Button icon={Plus} onClick={() => handleOpenModal()}>
-          Nuevo Facturador
-        </Button>
-      </div>
+      <PermissionGate permission="facturadores:crear">
+        <div className="flex justify-end">
+          <Button icon={Plus} onClick={() => handleOpenModal()}>
+            Nuevo Facturador
+          </Button>
+        </div>
+      </PermissionGate>
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card">

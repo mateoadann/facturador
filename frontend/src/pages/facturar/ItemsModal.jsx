@@ -2,49 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
-import { Button, DatePicker, Input, Modal, Select } from '@/components/ui'
+import { Button, CurrencyInput, DatePicker, Input, Modal, Select } from '@/components/ui'
 import { formatCUIT, formatComprobante } from '@/lib/utils'
 import { usePermission } from '@/hooks/usePermission'
 import { toast } from '@/stores/toastStore'
-
-const TIPOS_NOTA = new Set([2, 3, 7, 8, 12, 13, 52, 53])
-
-const TIPO_COMPROBANTE_OPTIONS = [
-  { value: 1, label: 'Factura A' },
-  { value: 6, label: 'Factura B' },
-  { value: 11, label: 'Factura C' },
-  { value: 51, label: 'Factura M' },
-  { value: 2, label: 'Nota Débito A' },
-  { value: 3, label: 'Nota Crédito A' },
-  { value: 7, label: 'Nota Débito B' },
-  { value: 8, label: 'Nota Crédito B' },
-  { value: 12, label: 'Nota Débito C' },
-  { value: 13, label: 'Nota Crédito C' },
-  { value: 52, label: 'Nota Débito M' },
-  { value: 53, label: 'Nota Crédito M' },
-]
-
-const CONCEPTO_OPTIONS = [
-  { value: 1, label: 'Productos' },
-  { value: 2, label: 'Servicios' },
-  { value: 3, label: 'Productos y Servicios' },
-]
-
-const ALICUOTA_OPTIONS = [
-  { value: 3, label: '0%' },
-  { value: 4, label: '10.5%' },
-  { value: 5, label: '21%' },
-  { value: 6, label: '27%' },
-  { value: 8, label: '5%' },
-  { value: 9, label: '2.5%' },
-]
-
-const EMPTY_ITEM = {
-  descripcion: '',
-  cantidad: '1',
-  precio_unitario: '0',
-  alicuota_iva_id: 5,
-}
+import { TIPOS_NOTA, TIPO_COMPROBANTE_OPTIONS, CONCEPTO_OPTIONS, ALICUOTA_OPTIONS, EMPTY_ITEM } from './constants'
 
 function ItemsModal({ factura, onClose, onSaved }) {
   const canEdit = usePermission('facturas:editar')
@@ -325,7 +287,7 @@ function ItemsModal({ factura, onClose, onSaved }) {
               <p className="text-sm text-text-muted">Cargando items...</p>
             ) : (
               formData.items.map((item, idx) => (
-                <div key={`${idx}-${item.descripcion}`} className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 md:grid-cols-12">
+                <div key={idx} className="grid grid-cols-1 gap-2 rounded-md border border-border p-2 md:grid-cols-12">
                   <div className="md:col-span-5">
                     <Input
                       label={`Descripción #${idx + 1}`}
@@ -345,12 +307,11 @@ function ItemsModal({ factura, onClose, onSaved }) {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <Input
+                    <CurrencyInput
                       label="Precio unit."
-                      type="number"
-                      step="0.0001"
+                      decimalScale={4}
                       value={item.precio_unitario}
-                      onChange={(e) => updateItemField(idx, 'precio_unitario', e.target.value)}
+                      onValueChange={(vals) => updateItemField(idx, 'precio_unitario', vals.value)}
                       disabled={!canSave}
                     />
                   </div>

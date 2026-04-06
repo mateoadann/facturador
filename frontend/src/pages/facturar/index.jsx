@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Upload, Play, Eye, Trash2 } from 'lucide-react'
+import { Upload, Play, Eye, Trash2, Plus } from 'lucide-react'
 import { api } from '@/api/client'
 import {
   Button,
@@ -19,6 +19,7 @@ import { formatCUIT, formatCurrency, formatDate } from '@/lib/utils'
 import ImportModal from './ImportModal'
 import FacturarModal from './FacturarModal'
 import ItemsModal from './ItemsModal'
+import NuevaFacturaModal from './NuevaFacturaModal'
 import { useJobStatus } from '@/hooks/useJobStatus'
 import { toast } from '@/stores/toastStore'
 
@@ -32,6 +33,7 @@ function Facturar() {
   const [isFacturarOpen, setIsFacturarOpen] = useState(false)
   const [itemsFactura, setItemsFactura] = useState(null)
   const [activeTaskId, setActiveTaskId] = useState(null)
+  const [isNuevaOpen, setIsNuevaOpen] = useState(false)
 
   // Fetch lotes
   const { data: lotesData } = useQuery({
@@ -225,6 +227,13 @@ function Facturar() {
           )}
           <Button
             variant="secondary"
+            icon={Plus}
+            onClick={() => setIsNuevaOpen(true)}
+          >
+            Nueva Factura
+          </Button>
+          <Button
+            variant="secondary"
             icon={Upload}
             onClick={() => setIsImportOpen(true)}
           >
@@ -370,6 +379,17 @@ function Facturar() {
           setItemsFactura(null)
           queryClient.invalidateQueries(['facturas'])
           queryClient.invalidateQueries(['lotes'])
+        }}
+      />
+
+      <NuevaFacturaModal
+        isOpen={isNuevaOpen}
+        onClose={() => setIsNuevaOpen(false)}
+        onSuccess={(loteId) => {
+          setSelectedLote(loteId)
+          setIsNuevaOpen(false)
+          queryClient.invalidateQueries(['lotes'])
+          queryClient.invalidateQueries(['facturas'])
         }}
       />
     </div>
