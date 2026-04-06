@@ -7,7 +7,7 @@ DOCKER_COMPOSE ?= docker compose
 ENV ?= dev
 DC := $(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.$(ENV).yml
 
-.PHONY: help env up up-build down stop start restart ps logs logs-api logs-worker logs-frontend logs-db build pull reset clean prune ensure-api ensure-frontend migrate makemigrations seed bootstrap bootstrap-prod test test-backend lint-frontend build-frontend pre-push shell-api shell-worker shell-frontend db-shell prod prod-build prod-down prod-logs prod-ps prod-restart proxy-net
+.PHONY: help env up up-build down stop start restart ps logs logs-api logs-worker logs-frontend logs-db build pull reset clean prune ensure-api ensure-frontend migrate makemigrations seed seed-e2e bootstrap bootstrap-prod test test-e2e test-backend lint-frontend build-frontend pre-push shell-api shell-worker shell-frontend db-shell prod prod-build prod-down prod-logs prod-ps prod-restart proxy-net
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target> [ENV=dev|prod]\n\nDEV (default):  make up-build\nPROD:           make prod-build\n\nTargets:\n"} /^[a-zA-Z0-9_.-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -78,9 +78,15 @@ makemigrations: ensure-api ## Create migration (usage: make makemigrations m="de
 seed: ensure-api ## Seed initial tenant/admin data
 	$(DC) exec api python seed.py
 
+seed-e2e: ensure-api ## Reset E2E test data (passwords, cleanup test artifacts)
+	$(DC) exec api python seed_e2e.py
+
 bootstrap: up migrate seed ## Start stack + migrate + seed
 
 test: test-backend ## Run default test suite
+
+test-e2e: seed-e2e ## Run Playwright E2E tests (requires stack running)
+	npx playwright test
 
 test-backend: ensure-api ## Run backend tests in container
 	$(DC) exec -T api sh -lc "python -m pip show pytest >/dev/null 2>&1 || python -m pip install pytest; cd /app; python -m pytest -q --junitxml=/tmp/pytest.xml; pytest_exit=$$?; python scripts/pytest_table_report.py /tmp/pytest.xml; exit $$pytest_exit"
