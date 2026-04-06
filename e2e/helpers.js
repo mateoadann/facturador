@@ -40,12 +40,23 @@ export async function clearSession(page) {
   await page.evaluate(() => localStorage.clear())
 }
 
-/** Login with the given credentials */
+/** Login with the given credentials (retries once on failure for parallel safety) */
 export async function login(page, user = USERS.admin) {
   await clearSession(page)
   await page.goto('/login')
   await field(page, 'Email').input.fill(user.email)
   await field(page, 'Contraseña').input.fill(user.password)
   await page.getByRole('button', { name: /ingresar/i }).click()
-  await page.waitForURL(/\/(dashboard|facturar)/, { timeout: 15_000 })
+
+  try {
+    await page.waitForURL(/\/(dashboard|facturar)/, { timeout: 15_000 })
+  } catch {
+    // Retry once — parallel tests may temporarily change the password
+    await page.goto('/login')
+    await page.waitForTimeout(2000)
+    await field(page, 'Email').input.fill(user.email)
+    await field(page, 'Contraseña').input.fill(user.password)
+    await page.getByRole('button', { name: /ingresar/i }).click()
+    await page.waitForURL(/\/(dashboard|facturar)/, { timeout: 15_000 })
+  }
 }
