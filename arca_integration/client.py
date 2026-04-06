@@ -15,16 +15,17 @@ from datetime import date, datetime
 from decimal import Decimal
 
 # AFIP/ARCA servers use small DH parameters that OpenSSL 3.x rejects.
-# Lower security level to allow the connection.
-_orig_sslcontext_init = ssl.SSLContext.__init__
+# Lower security level to allow the connection via create_default_context patch.
+_orig_create_default_context = ssl.create_default_context
 
 
-def _patched_sslcontext_init(self, *args, **kwargs):
-    _orig_sslcontext_init(self, *args, **kwargs)
-    self.set_ciphers('DEFAULT:@SECLEVEL=1')
+def _patched_create_default_context(*args, **kwargs):
+    ctx = _orig_create_default_context(*args, **kwargs)
+    ctx.set_ciphers('DEFAULT:@SECLEVEL=1')
+    return ctx
 
 
-ssl.SSLContext.__init__ = _patched_sslcontext_init
+ssl.create_default_context = _patched_create_default_context
 
 import arca_arg.settings as arca_settings
 import arca_arg.auth as arca_auth
