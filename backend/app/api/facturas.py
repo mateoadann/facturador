@@ -371,6 +371,231 @@ def import_csv():
     }), 201
 
 
+@facturas_bp.route('', methods=['POST'])
+@permission_required('facturar:importar')
+def create_factura():
+    """Crear una factura individual de forma manual (sin CSV)."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Datos requeridos'}), 400
+
+    required_fields = ['facturador_id', 'receptor_id', 'tipo_comprobante', 'concepto', 'fecha_emision', 'items']
+    missing = [f for f in required_fields if f not in data or data[f] in (None, '')]
+    if missing:
+        return jsonify({'error': f"Campos requeridos: {', '.join(missing)}"}), 400
+
+    try:
+        # Validate facturador
+        try:
+            facturador_id = UUID(str(data['facturador_id']))
+        except (TypeError, ValueError):
+            raise ValueError('facturador_id inválido')
+
+        facturador = Facturador.query.filter_by(
+            id=facturador_id,
+            tenant_id=g.tenant_id,
+            activo=True
+        ).first()
+        if not facturador:
+            raise ValueError('Facturador no encontrado o inactivo')
+
+        if not facturador.cert_encrypted or not facturador.key_encrypted:
+            raise ValueError('El facturador no tiene certificados configurados')
+
+        # Validate receptor
+        try:
+            receptor_id = UUID(str(data['receptor_id']))
+        except (TypeError, ValueError):
+            raise ValueError('receptor_id inválido')
+
+        receptor = Receptor.query.filter_by(
+            id=receptor_id,
+            tenant_id=g.tenant_id
+        ).first()
+        if not receptor:
+            raise ValueError('Receptor no encontrado')
+
+        # Parse fields
+        tipo_comprobante = int(data['tipo_comprobante'])
+        concepto = int(data['concepto'])
+
+        fecha_emision = _parse_date_or_none(data['fecha_emision'], 'fecha_emision')
+        if not fecha_emision:
+            raise ValueError("Campo 'fecha_emision' es requerido")
+
+        fecha_desde = _parse_date_or_none(data.get('fecha_desde'), 'fecha_desde')
+        fecha_hasta = _parse_date_or_none(data.get('fecha_hasta'), 'fecha_hasta')
+        fecha_vto_pago = _parse_date_or_none(data.get('fecha_vto_pago'), 'fecha_vto_pago')
+
+        # Parse items and calculate totals
+        parsed_items = _parse_items_payload(data['items'])
+        totals = _calculate_totals_from_items(parsed_items)
+        importe_neto = totals['importe_neto']
+        importe_iva = totals['importe_iva']
+        importe_total = totals['importe_total']
+
+        # Normalize for tipo C
+        importe_neto, importe_iva, importe_total = normalizar_importes_para_tipo_c(
+            tipo_comprobante, importe_neto, importe_iva, importe_total
+        )
+
+        # Default service dates to fecha_emision (same as CSV parser)
+        if concepto in (2, 3):
+            fecha_desde = fecha_desde or fecha_emision
+            fecha_hasta = fecha_hasta or fecha_emision
+            fecha_vto_pago = fecha_vto_pago or fecha_emision
+
+        # Validate business rules: servicios
+        if concepto in (2, 3):
+            if not (fecha_desde and fecha_hasta and fecha_vto_pago):
+                raise ValueError('Para concepto 2 o 3 se requieren fecha_desde, fecha_hasta y fecha_vto_pago')
+
+        # Validate business rules: notas de crédito/débito
+        tipos_nota = {2, 3, 7, 8, 12, 13, 52, 53}
+        cbte_asoc_tipo = None
+        cbte_asoc_pto_vta = None
+        cbte_asoc_nro = None
+
+        if tipo_comprobante in tipos_nota:
+            raw_tipo = data.get('cbte_asoc_tipo')
+            raw_pto = data.get('cbte_asoc_pto_vta')
+            raw_nro = data.get('cbte_asoc_nro')
+            if not (raw_tipo and raw_pto and raw_nro):
+                raise ValueError('Para notas se requiere cbte_asoc_tipo, cbte_asoc_pto_vta y cbte_asoc_nro')
+            cbte_asoc_tipo = int(raw_tipo)
+            cbte_asoc_pto_vta = int(raw_pto)
+            cbte_asoc_nro = int(raw_nro)
+        else:
+            raw_tipo = data.get('cbte_asoc_tipo')
+            raw_pto = data.get('cbte_asoc_pto_vta')
+            raw_nro = data.get('cbte_asoc_nro')
+            if raw_tipo not in (None, ''):
+                cbte_asoc_tipo = int(raw_tipo)
+            if raw_pto not in (None, ''):
+                cbte_asoc_pto_vta = int(raw_pto)
+            if raw_nro not in (None, ''):
+                cbte_asoc_nro = int(raw_nro)
+
+        # Resolve or create Lote
+        lote_id_str = data.get('lote_id')
+
+        if lote_id_str:
+            # Add to existing lote
+            try:
+                lote_id_val = UUID(str(lote_id_str))
+            except (TypeError, ValueError):
+                raise ValueError('lote_id inválido')
+
+            lote = Lote.query.filter_by(
+                id=lote_id_val,
+                tenant_id=g.tenant_id,
+            ).first()
+            if not lote:
+                raise ValueError('Lote no encontrado')
+            if lote.estado not in ('pendiente', 'completado'):
+                raise ValueError('El lote no está disponible para agregar facturas')
+
+            # Validate facturador matches if lote already has one
+            if lote.facturador_id and lote.facturador_id != facturador.id:
+                raise ValueError('El facturador no coincide con el del lote')
+
+            if not lote.facturador_id:
+                lote.facturador_id = facturador.id
+
+            lote.total_facturas = (lote.total_facturas or 0) + 1
+        else:
+            # Create new lote
+            etiqueta = (data.get('etiqueta') or '').strip()
+            if not etiqueta:
+                etiqueta = f"Manual - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+            existing_lote = Lote.query.filter(
+                Lote.tenant_id == g.tenant_id,
+                db.func.lower(Lote.etiqueta) == etiqueta.lower()
+            ).first()
+            if existing_lote:
+                if _is_empty_lote(existing_lote.id, g.tenant_id):
+                    db.session.delete(existing_lote)
+                    db.session.flush()
+                else:
+                    raise ValueError('Ya existe un lote con esa etiqueta')
+
+            lote = Lote(
+                tenant_id=g.tenant_id,
+                facturador_id=facturador.id,
+                etiqueta=etiqueta,
+                tipo='factura',
+                estado='pendiente',
+                total_facturas=1,
+            )
+            db.session.add(lote)
+
+        db.session.flush()
+
+        # Create Factura
+        factura = Factura(
+            tenant_id=g.tenant_id,
+            lote_id=lote.id,
+            facturador_id=facturador.id,
+            receptor_id=receptor.id,
+            tipo_comprobante=tipo_comprobante,
+            concepto=concepto,
+            punto_venta=facturador.punto_venta,
+            fecha_emision=fecha_emision,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            fecha_vto_pago=fecha_vto_pago,
+            importe_total=importe_total,
+            importe_neto=importe_neto,
+            importe_iva=importe_iva,
+            moneda='PES',
+            cotizacion=Decimal('1'),
+            cbte_asoc_tipo=cbte_asoc_tipo,
+            cbte_asoc_pto_vta=cbte_asoc_pto_vta,
+            cbte_asoc_nro=cbte_asoc_nro,
+            estado='pendiente',
+        )
+        db.session.add(factura)
+        db.session.flush()
+
+        # Create FacturaItems
+        for idx, item_data in enumerate(parsed_items):
+            item = FacturaItem(
+                factura_id=factura.id,
+                descripcion=item_data['descripcion'],
+                cantidad=item_data['cantidad'],
+                precio_unitario=item_data['precio_unitario'],
+                alicuota_iva_id=item_data['alicuota_iva_id'],
+                importe_iva=item_data['importe_iva'],
+                subtotal=item_data['subtotal'],
+                orden=idx
+            )
+            db.session.add(item)
+
+        log_action(
+            'factura:crear',
+            recurso='factura',
+            recurso_id=factura.id,
+            detalle={
+                'facturador_id': str(facturador.id),
+                'receptor_id': str(receptor.id),
+                'tipo_comprobante': tipo_comprobante,
+                'importe_total': str(importe_total),
+                'lote_id': str(lote.id),
+            }
+        )
+        db.session.commit()
+
+        return jsonify({
+            'factura': factura.to_dict(include_items=True),
+            'lote': lote.to_dict(),
+        }), 201
+
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+
+
 def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturador: 'Facturador') -> Factura:
     """Crear una factura a partir de datos parseados del CSV.
 
