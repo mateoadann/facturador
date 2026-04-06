@@ -1,0 +1,31 @@
+{
+  "name": "facturador_v2",
+  "version": "1.0.0",
+  "description": "<div align=\"center\">   <picture>     <source media=\"(prefers-color-scheme: dark)\" srcset=\"frontend/public/factura_dark_mode.png\" />     <source media=\"(prefers-color-scheme: light)\" srcset=\"frontend/public/factura_light_mode.png\" />     <img src=\"frontend/public/factura_light_mode.png\" alt=\"Facturador\" width=\"120\" height=\"120\" />   </picture>   <h1>Facturador</h1> </div>",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {
+    "playwright": "^1.59.1",
+    "playwright-core": "^1.59.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mateoadann/facturador.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mateoadann/facturador/issues"
+  },
+  "homepage": "https://github.com/mateoadann/facturador#readme"
+}
