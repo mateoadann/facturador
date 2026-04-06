@@ -57,6 +57,12 @@ migrations/versions/__pycache__/
 htmlcov/
 .pytest_cache/
 
+# Playwright E2E
+test-results/
+playwright-report/
+.playwright-mcp/
+blob-report/
+
 # Misc
 *.log
 *.bak
