@@ -40,18 +40,18 @@ test.describe('Cross-role Permissions', () => {
 
   // ── Viewer read-only ────────────────────────────────────────────────────
 
-  test('viewer: "Nuevo Facturador" button visibility on /facturadores page', async ({ page }) => {
+  test('viewer: cannot see "Nuevo Facturador" button on /facturadores page', async ({ page }) => {
     await login(page, USERS.viewer)
 
     await page.goto('/facturadores')
     await page.waitForURL(/\/facturadores/)
+    await page.waitForTimeout(1000)
 
-    // Known issue: the "Nuevo Facturador" button is currently visible to all roles
-    // because the source code does not wrap it with a PermissionGate.
-    // TODO: gate this button behind facturadores:crear permission
+    // Viewer has facturadores:ver but NOT facturadores:crear
+    // The button is gated behind PermissionGate
     await expect(
       page.getByRole('button', { name: /nuevo facturador/i })
-    ).toBeVisible()
+    ).not.toBeVisible()
   })
 
   // ── Direct URL access ───────────────────────────────────────────────────
