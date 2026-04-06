@@ -6,6 +6,7 @@ import fcntl
 import json
 import ast
 import re
+import os
 import ssl
 import logging
 import importlib
@@ -14,18 +15,12 @@ from typing import Optional
 from datetime import date, datetime
 from decimal import Decimal
 
-# AFIP/ARCA servers use small DH parameters that OpenSSL 3.x rejects.
-# Lower security level to allow the connection via create_default_context patch.
-_orig_create_default_context = ssl.create_default_context
-
-
-def _patched_create_default_context(*args, **kwargs):
-    ctx = _orig_create_default_context(*args, **kwargs)
-    ctx.set_ciphers('DEFAULT:@SECLEVEL=1')
-    return ctx
-
-
-ssl.create_default_context = _patched_create_default_context
+# AFIP/ARCA servers use small DH parameters that OpenSSL 3.x rejects by default.
+# Set OPENSSL_CONF to a custom config that lowers the security level BEFORE any
+# SSL context is created by urllib3/requests/zeep.
+_openssl_conf = os.path.join(os.path.dirname(__file__), 'openssl_afip.cnf')
+if os.path.exists(_openssl_conf):
+    os.environ.setdefault('OPENSSL_CONF', _openssl_conf)
 
 import arca_arg.settings as arca_settings
 import arca_arg.auth as arca_auth
