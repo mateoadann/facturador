@@ -216,4 +216,9 @@ export const api = {
   help: {
     getImportCsvGuide: () => client.get('/help/guia-importacion-csv', { responseType: 'text' }),
   },
+
+  // ARCA Status
+  arca: {
+    status: () => client.get('/arca/status'),
+  },
 }
