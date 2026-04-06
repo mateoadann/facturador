@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, AlertCircle } from 'lucide-react'
 import { api } from '@/api/client'
 import { Button, Modal, Select } from '@/components/ui'
 import { toast } from '@/stores/toastStore'
@@ -9,6 +9,15 @@ import { formatCUIT } from '@/lib/utils'
 function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
   const [loteId, setLoteId] = useState(selectedLote || '')
   const [facturadorId, setFacturadorId] = useState('')
+
+  // Check ARCA status when modal opens (non-blocking)
+  const { data: arcaStatus, isLoading: arcaChecking } = useQuery({
+    queryKey: ['arca-status-preflight'],
+    queryFn: () => api.arca.status().then((res) => res.data),
+    enabled: isOpen,
+    staleTime: 60_000,
+    retry: false,
+  })
 
   const { data: facturadoresData } = useQuery({
     queryKey: ['facturadores', { activo: true, per_page: 200 }],
@@ -171,6 +180,29 @@ function FacturarModal({ isOpen, onClose, lotes, selectedLote, onSuccess }) {
               </p>
             </div>
           </div>
+        )}
+
+        {/* ARCA status warning (non-blocking) */}
+        {arcaStatus && arcaStatus.overall !== 'operational' && (
+          <div className="flex items-start gap-3 rounded-md bg-error-light p-4">
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-error" />
+            <div className="text-sm">
+              <p className="font-medium text-error-foreground">
+                ARCA {arcaStatus.overall === 'down' ? 'no disponible' : 'con problemas'}
+              </p>
+              <p className="mt-1 text-error-foreground/80">
+                {arcaStatus.services
+                  .filter((s) => s.status !== 'operational')
+                  .map((s) => `${s.name}: ${s.status === 'down' ? 'caído' : 'degradado'}`)
+                  .join(' · ') || 'Servicio con problemas'}
+                . La facturación podría fallar.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {arcaChecking && (
+          <p className="text-xs text-text-muted">Verificando estado de ARCA...</p>
         )}
 
         {facturarMutation.error && (

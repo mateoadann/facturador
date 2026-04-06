@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit, Trash2, Upload, Wifi, Power } from 'lucide-react'
+import { Plus, Edit, Trash2, Upload, Wifi, Power, Activity } from 'lucide-react'
 import { api } from '@/api/client'
 import { toast } from '@/stores/toastStore'
 import CertificadosModal from './CertificadosModal'
@@ -169,16 +169,83 @@ function Facturadores() {
     }
   }
 
+  const [arcaStatus, setArcaStatus] = useState(null)
+  const [arcaLoading, setArcaLoading] = useState(false)
+
+  const checkArcaStatus = async () => {
+    setArcaLoading(true)
+    try {
+      const res = await api.arca.status()
+      setArcaStatus(res.data)
+    } catch {
+      setArcaStatus({ overall: 'down', services: [] })
+    } finally {
+      setArcaLoading(false)
+    }
+  }
+
+  const statusColor = {
+    operational: 'bg-success',
+    degraded: 'bg-warning',
+    down: 'bg-error',
+  }
+
+  const statusLabel = {
+    operational: 'Operativo',
+    degraded: 'Degradado',
+    down: 'Caído',
+  }
+
   return (
     <div className="space-y-6">
       {/* Actions */}
-      <PermissionGate permission="facturadores:crear">
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <Button
+          variant="secondary"
+          icon={Activity}
+          onClick={checkArcaStatus}
+          disabled={arcaLoading}
+        >
+          {arcaLoading ? 'Consultando...' : 'Estado ARCA'}
+        </Button>
+        <PermissionGate permission="facturadores:crear">
           <Button icon={Plus} onClick={() => handleOpenModal()}>
             Nuevo Facturador
           </Button>
+        </PermissionGate>
+      </div>
+
+      {/* ARCA Status Card */}
+      {arcaStatus && (
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`rounded-full h-3 w-3 ${statusColor[arcaStatus.overall]}`} />
+              <span className="text-sm font-medium text-text-primary">
+                ARCA {statusLabel[arcaStatus.overall]}
+              </span>
+            </div>
+            <a
+              href="https://status.afipsdk.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary hover:underline"
+            >
+              Ver detalle
+            </a>
+          </div>
+          {arcaStatus.services.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-4">
+              {arcaStatus.services.map((svc) => (
+                <div key={svc.key} className="flex items-center gap-2">
+                  <div className={`rounded-full h-2 w-2 ${statusColor[svc.status]}`} />
+                  <span className="text-xs text-text-secondary">{svc.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </PermissionGate>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border border-border bg-card">
