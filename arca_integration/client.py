@@ -16,11 +16,19 @@ from datetime import date, datetime
 from decimal import Decimal
 
 # AFIP/ARCA servers use small DH parameters that OpenSSL 3.x rejects by default.
-# Set OPENSSL_CONF to a custom config that lowers the security level BEFORE any
-# SSL context is created by urllib3/requests/zeep.
-_openssl_conf = os.path.join(os.path.dirname(__file__), 'openssl_afip.cnf')
-if os.path.exists(_openssl_conf):
-    os.environ.setdefault('OPENSSL_CONF', _openssl_conf)
+# Patch SSLContext.wrap_socket to force SECLEVEL=1 on every TLS connection.
+_orig_wrap_socket = ssl.SSLContext.wrap_socket
+
+
+def _patched_wrap_socket(self, *args, **kwargs):
+    try:
+        self.set_ciphers('DEFAULT@SECLEVEL=1')
+    except Exception:
+        pass
+    return _orig_wrap_socket(self, *args, **kwargs)
+
+
+ssl.SSLContext.wrap_socket = _patched_wrap_socket
 
 import arca_arg.settings as arca_settings
 import arca_arg.auth as arca_auth
