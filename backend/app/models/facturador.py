@@ -18,6 +18,7 @@ class Facturador(db.Model):
     cert_encrypted = db.Column(db.LargeBinary)
     key_encrypted = db.Column(db.LargeBinary)
     ambiente = db.Column(db.String(20), default='testing')
+    concepto_default = db.Column(db.Integer, nullable=True)  # 1=Productos, 2=Servicios, 3=Ambos
     activo = db.Column(db.Boolean, default=True)
     ingresos_brutos = db.Column(db.String(50), nullable=True)
     fecha_inicio_actividades = db.Column(db.Date, nullable=True)
@@ -44,6 +45,7 @@ class Facturador(db.Model):
             'fecha_inicio_actividades': self.fecha_inicio_actividades.isoformat() if self.fecha_inicio_actividades else None,
             'punto_venta': self.punto_venta,
             'ambiente': self.ambiente,
+            'concepto_default': self.concepto_default,
             'activo': self.activo,
             'ingresos_brutos': self.ingresos_brutos,
             'fecha_inicio_actividades': self.fecha_inicio_actividades.isoformat() if self.fecha_inicio_actividades else None,

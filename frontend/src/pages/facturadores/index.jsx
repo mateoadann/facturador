@@ -35,6 +35,7 @@ function Facturadores() {
     fecha_inicio_actividades: '',
     punto_venta: '',
     ambiente: 'testing',
+    concepto_default: '',
   })
 
   const { data, isLoading } = useQuery({
@@ -115,6 +116,7 @@ function Facturadores() {
         fecha_inicio_actividades: facturador.fecha_inicio_actividades || '',
         punto_venta: facturador.punto_venta.toString(),
         ambiente: facturador.ambiente,
+        concepto_default: facturador.concepto_default != null ? facturador.concepto_default.toString() : '',
       })
     } else {
       setEditingFacturador(null)
@@ -127,6 +129,7 @@ function Facturadores() {
         fecha_inicio_actividades: '',
         punto_venta: '',
         ambiente: 'testing',
+        concepto_default: '',
       })
     }
     setIsModalOpen(true)
@@ -141,6 +144,7 @@ function Facturadores() {
     const data = {
       ...formData,
       punto_venta: parseInt(formData.punto_venta, 10),
+      concepto_default: formData.concepto_default ? parseInt(formData.concepto_default, 10) : null,
     }
 
     if (editingFacturador) {
@@ -485,6 +489,20 @@ function Facturadores() {
               </label>
             </div>
           </div>
+
+          <Select
+            label="Concepto por defecto"
+            value={formData.concepto_default}
+            onChange={(e) => setFormData({ ...formData, concepto_default: e.target.value })}
+          >
+            <option value="">Sin definir</option>
+            <option value="1">Productos</option>
+            <option value="2">Servicios</option>
+            <option value="3">Productos y Servicios</option>
+          </Select>
+          <p className="text-xs text-text-muted">
+            Se usa como valor por defecto cuando el CSV no incluye columna de concepto.
+          </p>
 
           {(createMutation.error || updateMutation.error) && (
             <div className="rounded-md bg-error-light p-3 text-sm text-error-foreground">

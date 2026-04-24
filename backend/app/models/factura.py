@@ -61,6 +61,7 @@ class Factura(db.Model):
     email_error = db.Column(db.String(500))
 
     # Email override (from CSV)
+    email_override = db.Column(db.String(1000))  # Replaces receptor.email as TO when set
     emails_cc = db.Column(db.String(1000))
     email_asunto = db.Column(db.String(500))
     email_mensaje = db.Column(db.Text)
@@ -107,6 +108,7 @@ class Factura(db.Model):
             'email_enviado': self.email_enviado or False,
             'email_enviado_at': self.email_enviado_at.isoformat() if self.email_enviado_at else None,
             'email_error': self.email_error,
+            'email_override': self.email_override,
             'emails_cc': self.emails_cc,
             'email_asunto': self.email_asunto,
             'email_mensaje': self.email_mensaje,

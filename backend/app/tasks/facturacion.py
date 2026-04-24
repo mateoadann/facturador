@@ -250,7 +250,7 @@ def procesar_lote(self, lote_id: str, tenant_id: str):
                                     countdown=email_index * EMAIL_SEND_DELAY_SECONDS,
                                 )
                                 email_index += 1
-                            elif factura.receptor and factura.receptor.email:
+                            elif factura.email_override or (factura.receptor and factura.receptor.email):
                                 from .email import enviar_factura_email
                                 enviar_factura_email.apply_async(
                                     args=[str(factura.id), str(factura.tenant_id)],
@@ -385,20 +385,36 @@ def _has_factura_overrides(factura: Factura) -> bool:
 def _resolver_destinatarios_email(factura: Factura) -> list[str] | None:
     """Resuelve lista de destinatarios para envío automático post-ARCA.
 
-    Si hay emails_cc en la factura (del CSV), bypasea email_habilitado.
-    Si no hay emails_cc, retorna None para que siga el flujo default.
+    Prioridad:
+    1. email_override (del CSV) → reemplaza receptor.email como TO
+    2. receptor.email → TO por defecto
+    emails_cc siempre se agrega como destinatarios adicionales.
+
+    Si hay email_override o emails_cc, bypasea email_habilitado.
+    Si no hay ninguno, retorna None para que siga el flujo default.
     """
+    email_override_raw = (factura.email_override or '').strip()
     emails_cc_raw = (factura.emails_cc or '').strip()
 
-    if not emails_cc_raw:
+    if not email_override_raw and not emails_cc_raw:
         return None
 
     destinatarios = []
-    if factura.receptor and factura.receptor.email:
+
+    # TO: email_override replaces receptor.email when set
+    if email_override_raw:
+        destinatarios.extend(
+            e.strip() for e in email_override_raw.split(',') if e.strip()
+        )
+    elif factura.receptor and factura.receptor.email:
         destinatarios.append(factura.receptor.email.strip())
-    destinatarios.extend(
-        e.strip() for e in emails_cc_raw.split(',') if e.strip()
-    )
+
+    # CC: always append
+    if emails_cc_raw:
+        destinatarios.extend(
+            e.strip() for e in emails_cc_raw.split(',') if e.strip()
+        )
+
     return destinatarios if destinatarios else None
 
 

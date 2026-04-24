@@ -104,6 +104,18 @@ def create_facturador():
     if existing:
         return jsonify({'error': 'Ya existe un facturador con ese CUIT, punto de venta y ambiente'}), 400
 
+    # Validar concepto_default si viene
+    concepto_default = data.get('concepto_default')
+    if concepto_default is not None and concepto_default != '':
+        try:
+            concepto_default = int(concepto_default)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'concepto_default debe ser numérico'}), 400
+        if concepto_default not in (1, 2, 3):
+            return jsonify({'error': 'concepto_default debe ser 1 (Productos), 2 (Servicios) o 3 (Ambos)'}), 400
+    else:
+        concepto_default = None
+
     facturador = Facturador(
         tenant_id=g.tenant_id,
         cuit=data['cuit'],
@@ -113,7 +125,8 @@ def create_facturador():
         ingresos_brutos=data.get('ingresos_brutos'),
         fecha_inicio_actividades=fecha_inicio_actividades,
         punto_venta=data['punto_venta'],
-        ambiente=ambiente
+        ambiente=ambiente,
+        concepto_default=concepto_default,
     )
 
     db.session.add(facturador)
@@ -183,6 +196,18 @@ def update_facturador(facturador_id):
         facturador.punto_venta = nuevo_punto_venta
     if 'ambiente' in data:
         facturador.ambiente = nuevo_ambiente
+    if 'concepto_default' in data:
+        cd = data['concepto_default']
+        if cd is not None and cd != '':
+            try:
+                cd = int(cd)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'concepto_default debe ser numérico'}), 400
+            if cd not in (1, 2, 3):
+                return jsonify({'error': 'concepto_default debe ser 1 (Productos), 2 (Servicios) o 3 (Ambos)'}), 400
+            facturador.concepto_default = cd
+        else:
+            facturador.concepto_default = None
     if 'activo' in data:
         facturador.activo = data['activo']
 

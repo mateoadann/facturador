@@ -98,7 +98,11 @@ def enviar_emails_lote(self, lote_id: str, tenant_id: str, mode: str = 'no_envia
         }
 
     for factura in facturas:
-        if not factura.receptor or not factura.receptor.email:
+        has_email = (
+            factura.email_override
+            or (factura.receptor and factura.receptor.email)
+        )
+        if not has_email:
             skipped += 1
             continue
 
@@ -125,9 +129,14 @@ def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False
         return {'skipped': True, 'reason': 'Ya enviado'}
 
     # Si hay destinatarios custom, no necesita email del receptor
-    if not destinatarios and (not factura.receptor or not factura.receptor.email):
-        logger.info(f'Factura {factura.id} sin email de receptor, omitiendo')
-        return {'skipped': True, 'reason': 'Sin email de receptor'}
+    if not destinatarios:
+        has_email = (
+            factura.email_override
+            or (factura.receptor and factura.receptor.email)
+        )
+        if not has_email:
+            logger.info(f'Factura {factura.id} sin email de receptor ni override, omitiendo')
+            return {'skipped': True, 'reason': 'Sin email de receptor'}
 
     # Cuando hay destinatarios explícitos (emails_cc), buscar config SIN filtrar por email_habilitado
     if destinatarios:
@@ -168,7 +177,12 @@ def _enviar_factura_email_sync(factura, allow_resend=False, raise_on_error=False
         factura.email_error = None
         db.session.commit()
 
-        target = destinatarios or [factura.receptor.email]
+        if destinatarios:
+            target = destinatarios
+        elif factura.email_override:
+            target = [e.strip() for e in factura.email_override.split(',') if e.strip()]
+        else:
+            target = [factura.receptor.email]
         logger.info(f'Email enviado para factura {factura.id} a {target}')
         return {'success': True, 'email': target}
     except (

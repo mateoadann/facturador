@@ -295,8 +295,29 @@ def import_csv():
         except (UnicodeDecodeError, OSError, ValueError):
             return jsonify({'error': 'No se pudo decodificar el archivo'}), 400
 
-    # Parsear CSV
-    facturas_data, parse_errors = parse_csv(content)
+    # Obtener facturador ANTES de parsear (needed for concepto_default)
+    facturador_id_str = request.form.get('facturador_id')
+    if not facturador_id_str:
+        return jsonify({'error': 'facturador_id es requerido'}), 400
+
+    try:
+        facturador_id = UUID(facturador_id_str)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'facturador_id inválido'}), 400
+
+    facturador = Facturador.query.filter_by(
+        id=facturador_id,
+        tenant_id=g.tenant_id,
+        activo=True
+    ).first()
+    if not facturador:
+        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 400
+
+    # Parsear CSV (with facturador's concepto_default)
+    facturas_data, parse_errors, parse_warnings = parse_csv(
+        content,
+        concepto_default=facturador.concepto_default,
+    )
 
     if parse_errors and not facturas_data:
         return jsonify({
@@ -315,28 +336,10 @@ def import_csv():
     db.session.add(lote)
     db.session.flush()
 
-    # Obtener facturador desde form data
-    facturador_id_str = request.form.get('facturador_id')
-    if not facturador_id_str:
-        return jsonify({'error': 'facturador_id es requerido'}), 400
-
-    try:
-        facturador_id = UUID(facturador_id_str)
-    except (ValueError, AttributeError):
-        return jsonify({'error': 'facturador_id inválido'}), 400
-
-    facturador = Facturador.query.filter_by(
-        id=facturador_id,
-        tenant_id=g.tenant_id,
-        activo=True
-    ).first()
-    if not facturador:
-        return jsonify({'error': 'Facturador no encontrado o inactivo'}), 400
-
     # Procesar cada factura
     facturas_creadas = []
     errores_creacion = []
-    warnings = []
+    warnings = list(parse_warnings)
 
     for idx, factura_data in enumerate(facturas_data):
         try:
@@ -347,6 +350,9 @@ def import_csv():
             email_warn = factura_data.get('_email_override_warning')
             if email_warn:
                 warnings.append(f"Fila {idx + 1}: {email_warn}")
+            validation_warn = factura_data.get('_validation_warning')
+            if validation_warn:
+                warnings.append(f"Fila {idx + 1}: {validation_warn}")
         except ValueError as e:
             errores_creacion.append(f"Fila {idx + 2}: {str(e)}")
 
@@ -629,6 +635,11 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturado
         data['importe_total'],
     )
 
+    # Auto-fill cbte_asoc_pto_vta from facturador if not explicitly set
+    cbte_asoc_pto_vta = data.get('cbte_asoc_pto_vta')
+    if data.get('cbte_asoc_nro') and not cbte_asoc_pto_vta:
+        cbte_asoc_pto_vta = facturador.punto_venta
+
     # Crear factura
     factura = Factura(
         tenant_id=tenant_id,
@@ -648,9 +659,10 @@ def create_factura_from_data(data: dict, lote_id: str, tenant_id: str, facturado
         moneda='PES',
         cotizacion=Decimal('1'),
         cbte_asoc_tipo=data.get('cbte_asoc_tipo'),
-        cbte_asoc_pto_vta=data.get('cbte_asoc_pto_vta'),
+        cbte_asoc_pto_vta=cbte_asoc_pto_vta,
         cbte_asoc_nro=data.get('cbte_asoc_nro'),
         estado='pendiente',
+        email_override=data.get('email_override'),
         emails_cc=data.get('emails_cc'),
         email_asunto=data.get('email_asunto'),
         email_mensaje=data.get('email_mensaje'),

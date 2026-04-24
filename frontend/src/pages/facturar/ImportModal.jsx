@@ -13,6 +13,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
   const [etiqueta, setEtiqueta] = useState('')
   const [facturadorId, setFacturadorId] = useState('')
   const [errors, setErrors] = useState([])
+  const [warnings, setWarnings] = useState([])
   const [isTemplateOpen, setIsTemplateOpen] = useState(false)
   const [isFormatoOpen, setIsFormatoOpen] = useState(false)
 
@@ -39,7 +40,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
       return api.facturas.import(formData)
     },
     onSuccess: (response) => {
-      const { lote, errores_parseo, errores_creacion } = response.data
+      const { lote, errores_parseo, errores_creacion, warnings: apiWarnings } = response.data
       if (errores_parseo?.length > 0 || errores_creacion?.length > 0) {
         setErrors([...errores_parseo, ...errores_creacion])
         toast.warning('Importación con errores', `Se importaron ${lote.total_facturas} facturas con algunos errores`)
@@ -47,6 +48,9 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
         toast.success('Importación exitosa', `Se importaron ${lote.total_facturas} facturas`)
         onSuccess(lote.id)
         handleClose()
+      }
+      if (apiWarnings?.length > 0) {
+        setWarnings(apiWarnings)
       }
     },
     onError: (error) => {
@@ -63,6 +67,7 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
     setEtiqueta('')
     setFacturadorId('')
     setErrors([])
+    setWarnings([])
     setIsTemplateOpen(false)
     setIsFormatoOpen(false)
     onClose()
@@ -201,26 +206,48 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
             />
           </button>
           {isFormatoOpen && (
-            <div className="mt-3 rounded-md bg-secondary/50 p-3 text-xs text-text-secondary">
-              <p className="mb-2">
-                Podés completar el template .xlsx y luego exportarlo como CSV (UTF-8) para importarlo.
+            <div className="mt-3 rounded-md bg-secondary/50 p-3 text-xs text-text-secondary space-y-2">
+              <p>
+                Completá el template .xlsx y exportalo como CSV para importarlo. Se auto-detecta
+                el delimitador (<code>;</code> o <code>,</code>) y el formato numérico
+                (argentino <code>1.234,56</code> o anglosajón <code>1234.56</code>).
               </p>
-              <p className="mb-2">Columnas requeridas:</p>
+
+              <p className="font-medium text-text-primary">Formato Excel (recomendado):</p>
+              <code className="block text-text-muted">
+                CUIT, TIPO_COMP, DETALLE FACTURA, NETO_UNI, CANT,
+                NETO_TOTAL, IVA, TOTAL, EMISION_COMP
+              </code>
+
+              <p className="font-medium text-text-primary mt-1">Formato interno (también soportado):</p>
               <code className="block text-text-muted">
                 receptor_cuit, tipo_comprobante, concepto, fecha_emision,
                 importe_total, importe_neto, importe_iva,
                 item_descripcion, item_cantidad, item_precio_unitario
               </code>
-              <p className="mt-2 mb-2">
-                Columnas opcionales: fecha_desde, fecha_hasta, fecha_vto_pago,
-                cbte_asoc_tipo, cbte_asoc_pto_vta, cbte_asoc_nro, item_alicuota_iva_id.
-              </p>
-              <p className="mb-2">
-                Cada fila representa un item. Las filas con el mismo receptor_cuit, tipo_comprobante
-                y fecha_emision se agrupan como items de la misma factura.
+
+              <p>
+                <strong>TIPO_COMP</strong>: A, B, C (facturas), NCA, NCB, NCC (notas de crédito),
+                NDA, NDB, NDC (notas de débito). También acepta códigos numéricos.
               </p>
               <p>
-                La condición IVA del receptor se determina automáticamente desde el receptor/padrón.
+                <strong>Concepto</strong>: Si el CSV no incluye columna de concepto, se usa el
+                valor configurado en el facturador.
+              </p>
+              <p>
+                <strong>NRO_FAC</strong>: Para NC/ND, indica el número de comprobante asociado.
+                El tipo y punto de venta se derivan automáticamente.
+              </p>
+              <p>
+                <strong>MAIL</strong>: Si tiene valor, reemplaza el email del receptor como destinatario.
+              </p>
+              <p>
+                Columnas opcionales de email: MAIL, MENSAJE_MAIL, ASUNTO_MAIL.
+                Columnas no reconocidas se ignoran automáticamente.
+              </p>
+              <p>
+                Cada fila representa un item. Las filas con el mismo CUIT, tipo y fecha
+                se agrupan como items de la misma factura.
               </p>
             </div>
           )}
@@ -238,6 +265,22 @@ function ImportModal({ isOpen, onClose, onSuccess }) {
             No se permiten etiquetas duplicadas dentro del tenant.
           </p>
         </div>
+
+        {/* Warnings */}
+        {warnings.length > 0 && (
+          <div className="rounded-md bg-warning/10 border border-warning/30 p-3">
+            <p className="mb-2 font-medium text-warning-foreground">
+              Advertencias:
+            </p>
+            <div className="max-h-40 overflow-y-auto pr-1">
+              <ul className="list-inside list-disc space-y-1 text-sm text-warning-foreground">
+                {warnings.map((warning, i) => (
+                  <li key={i}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         {/* Errors */}
         {errors.length > 0 && (
